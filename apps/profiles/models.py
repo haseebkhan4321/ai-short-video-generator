@@ -15,10 +15,16 @@ class Profile(models.Model):
         blank=True,
         help_text="System/style prompt used when generating scripts and image prompts.",
     )
+    narrator_voice = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Narrator voice for the active TTS provider (e.g. an ElevenLabs "
+        "voice ID, or a Kokoro voice like 'af_heart'). Blank uses the default.",
+    )
     elevenlabs_voice_id = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Default ElevenLabs narrator voice for this profile.",
+        help_text="(Deprecated) legacy ElevenLabs voice field.",
     )
     language = models.CharField(max_length=20, default="en")
 

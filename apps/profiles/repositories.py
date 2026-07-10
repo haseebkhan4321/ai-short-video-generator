@@ -16,6 +16,10 @@ class ProfileRepository:
         return Profile.objects.filter(pk=profile_id).first()
 
     @staticmethod
+    def get_by_name(name):
+        return Profile.objects.filter(name=name).first()
+
+    @staticmethod
     def create(**fields):
         return Profile.objects.create(**fields)
 

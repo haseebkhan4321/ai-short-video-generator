@@ -3,9 +3,17 @@ Django>=5.2,<5.3
 mysqlclient>=2.2
 python-dotenv>=1.0
 openai>=2.0
-elevenlabs>=2.0
 
+# Narration (local, free) + audio merge
+kokoro-onnx>=0.5      # bundles espeak-ng via espeakng-loader; no system install
+numpy>=2.0
+soundfile>=0.13
+
+# Kokoro model files (not pip): place under assets/kokoro/
+#   kokoro-v1.0.onnx, voices-v1.0.bin
+#   from https://github.com/thewh1teagle/kokoro-onnx/releases (model-files-v1.0)
+#
+# System binary (not pip): ffmpeg + ffprobe for the render step (path in .env).
+#
 # Added in later milestones:
 # faster-whisper>=1.0   # local subtitles (milestone 10, optional)
-#
-# System binaries (not pip): ffmpeg + ffprobe on PATH for the render step.

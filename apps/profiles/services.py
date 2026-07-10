@@ -18,7 +18,7 @@ class ProfileService:
             niche=data.get("niche", ""),
             description=data.get("description", ""),
             style_prompt=data.get("style_prompt", ""),
-            elevenlabs_voice_id=data.get("elevenlabs_voice_id", ""),
+            narrator_voice=data.get("narrator_voice", ""),
             language=data.get("language", "en"),
         )
 
@@ -30,7 +30,7 @@ class ProfileService:
             niche=data.get("niche", ""),
             description=data.get("description", ""),
             style_prompt=data.get("style_prompt", ""),
-            elevenlabs_voice_id=data.get("elevenlabs_voice_id", ""),
+            narrator_voice=data.get("narrator_voice", ""),
             language=data.get("language", "en"),
         )
 

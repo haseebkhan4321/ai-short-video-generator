@@ -54,6 +54,13 @@ class ChapterRepository:
         return Chapter.objects.bulk_create(chapters)
 
     @staticmethod
+    def update(chapter, **fields):
+        for key, value in fields.items():
+            setattr(chapter, key, value)
+        chapter.save()
+        return chapter
+
+    @staticmethod
     def delete_for_video(video_id):
         Chapter.objects.filter(video_id=video_id).delete()
 
@@ -66,6 +73,10 @@ class ChapterImageRepository:
     @staticmethod
     def for_chapter(chapter_id):
         return ChapterImage.objects.filter(chapter_id=chapter_id)
+
+    @staticmethod
+    def delete_for_chapter(chapter_id):
+        ChapterImage.objects.filter(chapter_id=chapter_id).delete()
 
 
 class StepRepository:

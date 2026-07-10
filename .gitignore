@@ -27,6 +27,10 @@ local_settings.py
 /assets/fonts/*
 !/assets/fonts/.gitkeep
 
+# Kokoro model files (large binaries; downloaded separately, see README)
+/assets/kokoro/*
+!/assets/kokoro/.gitkeep
+
 # Static build output
 /staticfiles/
 

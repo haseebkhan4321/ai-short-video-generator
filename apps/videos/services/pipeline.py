@@ -8,16 +8,19 @@ Step executors are registered by the per-step service modules (milestones 4-8) v
 ``register_executor``. Each executor receives the GenerationStep and returns a
 ``StepResult``. This keeps the framework decoupled from provider specifics.
 """
+import threading
 from dataclasses import dataclass, field
 from decimal import Decimal
 
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from ..models import (
     Provider,
     StepStatus,
     StepType,
+    Video,
     VideoStatus,
 )
 from ..repositories import (
@@ -27,6 +30,7 @@ from ..repositories import (
     VideoRepository,
 )
 from .cost_estimator import CostEstimator
+from .currency import format_usd_as_pkr
 
 
 # --- Executor registry -------------------------------------------------------
@@ -65,8 +69,8 @@ class BudgetExceededError(PipelineError):
         self.projected = projected
         self.cap = cap
         super().__init__(
-            f"Approving this would bring the video to ${projected}, over the "
-            f"${cap} per-video cap."
+            f"Approving this would bring the video to {format_usd_as_pkr(projected)}, "
+            f"over the {format_usd_as_pkr(cap)} per-video cap."
         )
 
 
@@ -82,7 +86,20 @@ class StepTypeNotImplemented(PipelineError):
 
 # --- Free vs paid ------------------------------------------------------------
 
-FREE_STEP_TYPES = {StepType.SPLIT, StepType.RENDER, StepType.SUBTITLES}
+FREE_STEP_TYPES = {StepType.SPLIT, StepType.MERGE, StepType.RENDER, StepType.SUBTITLES}
+
+
+def _run_steps_threaded(step_ids):
+    """Run one or more steps sequentially in a background thread with a fresh DB
+    connection (closed at the end to avoid leaking connections per thread)."""
+    from django.db import connections
+
+    try:
+        for step_id in step_ids:
+            step = StepRepository.get(step_id)
+            PipelineService.run_step(step)
+    finally:
+        connections.close_all()
 
 
 class PipelineService:
@@ -143,10 +160,148 @@ class PipelineService:
         return PipelineService._approve_and_run(step)
 
     @staticmethod
+    def approve_step_background(step, force=False):
+        """Validate + mark approved synchronously, then run in a background thread
+        so the request returns immediately. Used by the web UI."""
+        if step.status != StepStatus.PENDING_APPROVAL:
+            raise StepNotActionableError("Step is not pending approval.")
+        if not has_executor(step.step_type):
+            raise StepTypeNotImplemented(step.step_type)
+        PipelineService._check_budget(step.video, step.estimated_cost_usd, force)
+        StepRepository.update(
+            step, status=StepStatus.APPROVED, approved_at=timezone.now()
+        )
+        threading.Thread(
+            target=_run_steps_threaded, args=([step.pk],), daemon=True
+        ).start()
+        return step
+
+    @staticmethod
+    def batch_approve_background(video, step_type, force=False):
+        pending = list(
+            StepRepository.for_video(video.pk).filter(
+                step_type=step_type, status=StepStatus.PENDING_APPROVAL
+            )
+        )
+        if not pending:
+            return []
+        total_estimate = sum((s.estimated_cost_usd for s in pending), Decimal("0"))
+        PipelineService._check_budget(video, total_estimate, force)
+        for step in pending:
+            if not has_executor(step.step_type):
+                raise StepTypeNotImplemented(step.step_type)
+        ids = []
+        for step in pending:
+            StepRepository.update(
+                step, status=StepStatus.APPROVED, approved_at=timezone.now()
+            )
+            ids.append(step.pk)
+        threading.Thread(
+            target=_run_steps_threaded, args=(ids,), daemon=True
+        ).start()
+        return ids
+
+    @staticmethod
+    def approve_chapter_background(video, chapter_id, force=False):
+        """Approve and run all pending steps for one part (images + narration) so a
+        part can be completed on its own."""
+        pending = list(
+            StepRepository.for_video(video.pk).filter(
+                chapter_id=chapter_id, status=StepStatus.PENDING_APPROVAL
+            )
+        )
+        if not pending:
+            return []
+        total_estimate = sum((s.estimated_cost_usd for s in pending), Decimal("0"))
+        PipelineService._check_budget(video, total_estimate, force)
+        for step in pending:
+            if not has_executor(step.step_type):
+                raise StepTypeNotImplemented(step.step_type)
+        ids = []
+        for step in pending:
+            StepRepository.update(
+                step, status=StepStatus.APPROVED, approved_at=timezone.now()
+            )
+            ids.append(step.pk)
+        threading.Thread(
+            target=_run_steps_threaded, args=(ids,), daemon=True
+        ).start()
+        return ids
+
+    @staticmethod
     def reject_step(step):
         if step.status != StepStatus.PENDING_APPROVAL:
             raise StepNotActionableError("Step is not pending approval.")
         return StepRepository.update(step, status=StepStatus.REJECTED)
+
+    @staticmethod
+    def retry_step(step):
+        """Reset a failed/rejected step back to pending approval, in place (no new
+        row). Clears the video's failed state when appropriate."""
+        if step.status not in (StepStatus.FAILED, StepStatus.REJECTED):
+            raise StepNotActionableError("Only failed or rejected steps can be retried.")
+        StepRepository.update(
+            step,
+            status=StepStatus.PENDING_APPROVAL,
+            error_message="",
+            actual_cost_usd=None,
+            approved_at=None,
+            started_at=None,
+            finished_at=None,
+            progress_current=0,
+            progress_total=0,
+            progress_message="",
+        )
+        video = step.video
+        if video.status == VideoStatus.FAILED:
+            # Reset to the stage just before this step type.
+            prior = {
+                StepType.SCRIPT: VideoStatus.DRAFT,
+                StepType.IMAGES: VideoStatus.SPLIT,
+                StepType.NARRATION: VideoStatus.IMAGES,
+                StepType.MERGE: VideoStatus.NARRATION,
+                StepType.RENDER: VideoStatus.NARRATION,
+            }.get(step.step_type, VideoStatus.DRAFT)
+            VideoRepository.update(video, status=prior, error_message="")
+        return step
+
+    @staticmethod
+    def resume_waiting_steps(video):
+        """Start any APPROVED steps whose executor is now available (e.g. a free
+        step that was created before its executor existed, or a job orphaned by a
+        server restart). Safe to call on every page load."""
+        waiting = [
+            s
+            for s in StepRepository.for_video(video.pk).filter(
+                status=StepStatus.APPROVED
+            )
+            if has_executor(s.step_type)
+        ]
+        ids = []
+        for step in waiting:
+            # Claim synchronously so a rapid second load won't double-start.
+            StepRepository.update(
+                step, status=StepStatus.RUNNING, started_at=timezone.now()
+            )
+            ids.append(step.pk)
+        if ids:
+            threading.Thread(
+                target=_run_steps_threaded, args=(ids,), daemon=True
+            ).start()
+        return ids
+
+    @staticmethod
+    def update_progress(step, current=None, total=None, message=None):
+        """Executors call this to publish live progress for the UI."""
+        fields = {}
+        if current is not None:
+            fields["progress_current"] = current
+        if total is not None:
+            fields["progress_total"] = total
+        if message is not None:
+            fields["progress_message"] = message[:255]
+        if fields:
+            StepRepository.update(step, **fields)
 
     @staticmethod
     def batch_approve(video, step_type, force=False):
@@ -209,6 +364,7 @@ class PipelineService:
             video,
             total_cost_usd=Decimal(video.total_cost_usd)
             + Decimal(result.actual_cost_usd),
+            error_message="",
         )
         PipelineService._advance(step)
         return step
@@ -226,17 +382,24 @@ class PipelineService:
 
         elif step_type == StepType.SPLIT:
             VideoRepository.update(video, status=VideoStatus.SPLIT)
+            # Images and narration both depend only on the split text, so create
+            # both up front. The user can complete a part at a time or run a whole
+            # stage in batch. Merge waits until every part has both.
             PipelineService._create_image_steps(video)
+            PipelineService._create_narration_steps(video)
 
-        elif step_type == StepType.IMAGES:
-            if PipelineService._all_completed(video, StepType.IMAGES):
-                VideoRepository.update(video, status=VideoStatus.IMAGES)
-                PipelineService._create_narration_steps(video)
+        elif step_type in (StepType.IMAGES, StepType.NARRATION):
+            # Parts may finish in concurrent threads; a row lock ensures exactly one
+            # of them creates the merge step.
+            PipelineService._trigger_singleton_free(
+                video, StepType.MERGE,
+                ready=lambda: PipelineService._assets_ready(video),
+                on_create=lambda: VideoRepository.update(
+                    video, status=VideoStatus.NARRATION),
+            )
 
-        elif step_type == StepType.NARRATION:
-            if PipelineService._all_completed(video, StepType.NARRATION):
-                VideoRepository.update(video, status=VideoStatus.NARRATION)
-                PipelineService._create_and_maybe_run_free(video, StepType.RENDER)
+        elif step_type == StepType.MERGE:
+            PipelineService._trigger_singleton_free(video, StepType.RENDER)
 
         elif step_type == StepType.RENDER:
             VideoRepository.update(video, status=VideoStatus.COMPLETED)
@@ -248,6 +411,38 @@ class PipelineService:
         if not steps:
             return False
         return all(s.status == StepStatus.COMPLETED for s in steps)
+
+    @staticmethod
+    def _has_step(video, step_type):
+        return StepRepository.for_video(video.pk).filter(step_type=step_type).exists()
+
+    @staticmethod
+    def _assets_ready(video):
+        """True when every part has both its images and narration completed."""
+        return (
+            PipelineService._all_completed(video, StepType.IMAGES)
+            and PipelineService._all_completed(video, StepType.NARRATION)
+        )
+
+    @staticmethod
+    def _chapters_with_step(video, step_type):
+        return set(
+            StepRepository.for_video(video.pk)
+            .filter(step_type=step_type)
+            .values_list("chapter_id", flat=True)
+        )
+
+    @staticmethod
+    def ensure_asset_steps(video):
+        """Idempotently create any missing per-part image/narration steps. Backfills
+        videos split under the old flow and supports part-by-part completion."""
+        if video.status not in (
+            VideoStatus.SPLIT, VideoStatus.IMAGES, VideoStatus.NARRATION
+        ):
+            return
+        if ChapterRepository.for_video(video.pk).exists():
+            PipelineService._create_image_steps(video)
+            PipelineService._create_narration_steps(video)
 
     @staticmethod
     def _create_and_maybe_run_free(video, step_type):
@@ -265,9 +460,36 @@ class PipelineService:
         return step
 
     @staticmethod
+    def _trigger_singleton_free(video, step_type, ready=None, on_create=None):
+        """Create a one-off free step (merge/render) exactly once, even when called
+        from concurrent part threads. A row lock on the video serializes the check.
+        The step is run AFTER the lock is released so encoding doesn't hold it."""
+        step = None
+        with transaction.atomic():
+            Video.objects.select_for_update().get(pk=video.pk)
+            if (ready is None or ready()) and not PipelineService._has_step(
+                video, step_type
+            ):
+                if on_create is not None:
+                    on_create()
+                step = StepRepository.create(
+                    video=video,
+                    step_type=step_type,
+                    provider=Provider.LOCAL,
+                    status=StepStatus.APPROVED,
+                    estimated_cost_usd=Decimal("0"),
+                )
+        if step is not None and has_executor(step_type):
+            PipelineService.run_step(step)
+        return step
+
+    @staticmethod
     def _create_image_steps(video):
+        already = PipelineService._chapters_with_step(video, StepType.IMAGES)
         chapters = ChapterRepository.for_video(video.pk)
         for chapter in chapters:
+            if chapter.pk in already:
+                continue
             estimate = CostEstimator.estimate_images(settings.IMAGES_PER_PART)
             StepRepository.create(
                 video=video,
@@ -285,18 +507,24 @@ class PipelineService:
 
     @staticmethod
     def _create_narration_steps(video):
+        # Narration uses Kokoro (local, free). Steps still wait for a manual start
+        # since they are a long-running job.
+        voice = video.profile.narrator_voice
+        already = PipelineService._chapters_with_step(video, StepType.NARRATION)
         chapters = ChapterRepository.for_video(video.pk)
         for chapter in chapters:
-            estimate = CostEstimator.estimate_narration_for_text(chapter.body)
+            if chapter.pk in already:
+                continue
             StepRepository.create(
                 video=video,
                 chapter=chapter,
                 step_type=StepType.NARRATION,
-                provider=Provider.ELEVENLABS,
+                provider=Provider.LOCAL,
                 status=StepStatus.PENDING_APPROVAL,
-                estimated_cost_usd=estimate,
+                estimated_cost_usd=Decimal("0"),
                 request_payload={
-                    "voice_id": video.profile.elevenlabs_voice_id,
+                    "tts_provider": "kokoro",
+                    "voice_id": voice,
                     "characters": len(chapter.body or ""),
                     "chapter_number": chapter.chapter_number,
                 },

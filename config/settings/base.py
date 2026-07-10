@@ -130,8 +130,24 @@ ELEVENLABS_API_KEY = _get("ELEVENLABS_API_KEY", "")
 OPENAI_TEXT_MODEL = _get("OPENAI_TEXT_MODEL", "gpt-4o-mini")
 OPENAI_IMAGE_MODEL = _get("OPENAI_IMAGE_MODEL", "gpt-image-1")
 
-# Cost guardrail: warn/block when a video's spend would exceed this.
-MAX_COST_PER_VIDEO_USD = _get_decimal("MAX_COST_PER_VIDEO_USD", "25")
+# ---- Text-to-speech (narration): Kokoro, local and free ----
+TTS_PROVIDER = _get("TTS_PROVIDER", "kokoro")
+TTS_SAMPLE_RATE = _get_int("TTS_SAMPLE_RATE", 24000)
+# Max characters sent to the TTS engine per request (long parts are chunked).
+MAX_TTS_CHARS = _get_int("MAX_TTS_CHARS", 2000)
+
+# Kokoro (local). Model + voices files live under assets/kokoro/ (see README).
+DEFAULT_KOKORO_VOICE = _get("DEFAULT_KOKORO_VOICE", "af_heart")
+KOKORO_MODEL_PATH = _get("KOKORO_MODEL_PATH", str(BASE_DIR / "assets" / "kokoro" / "kokoro-v1.0.onnx"))
+KOKORO_VOICES_PATH = _get("KOKORO_VOICES_PATH", str(BASE_DIR / "assets" / "kokoro" / "voices-v1.0.bin"))
+KOKORO_LANG = _get("KOKORO_LANG", "en-us")
+
+# Currency: providers bill in USD; costs are stored in USD and displayed in PKR.
+USD_TO_PKR = _get_decimal("USD_TO_PKR", "280")
+
+# Cost guardrail (set in PKR): warn/block when a video's spend would exceed this.
+MAX_COST_PER_VIDEO_PKR = _get_decimal("MAX_COST_PER_VIDEO_PKR", "7000")
+MAX_COST_PER_VIDEO_USD = MAX_COST_PER_VIDEO_PKR / USD_TO_PKR
 
 # Long-form generation tuning.
 WORDS_PER_MINUTE = _get_int("WORDS_PER_MINUTE", 150)
@@ -140,3 +156,14 @@ TARGET_MINUTES_PER_PART = _get_int("TARGET_MINUTES_PER_PART", 6)
 IMAGES_PER_PART = _get_int("IMAGES_PER_PART", 4)
 VIDEO_WIDTH = _get_int("VIDEO_WIDTH", 1920)
 VIDEO_HEIGHT = _get_int("VIDEO_HEIGHT", 1080)
+
+# ---- Render (ffmpeg) ----
+# Binaries: "ffmpeg"/"ffprobe" if on PATH, or absolute paths via .env.
+FFMPEG_BINARY = _get("FFMPEG_BINARY", "ffmpeg")
+FFPROBE_BINARY = _get("FFPROBE_BINARY", "ffprobe")
+RENDER_FPS = _get_int("RENDER_FPS", 24)
+RENDER_PRESET = _get("RENDER_PRESET", "veryfast")  # x264 speed/size tradeoff
+RENDER_CRF = _get_int("RENDER_CRF", 23)
+# Background music: a file placed in assets/music/ (optional). Empty = no music.
+BACKGROUND_MUSIC = _get("BACKGROUND_MUSIC", "")
+BACKGROUND_MUSIC_VOLUME = _get("BACKGROUND_MUSIC_VOLUME", "0.08")

@@ -1,6 +1,14 @@
 from django import template
 
+from apps.videos.services.currency import format_usd_as_pkr
+
 register = template.Library()
+
+
+@register.filter
+def pkr(value):
+    """Format a USD amount as a PKR string, e.g. 0.55 -> 'Rs 154.00'."""
+    return format_usd_as_pkr(value)
 
 _VIDEO_STATUS_CLASS = {
     "draft": "",

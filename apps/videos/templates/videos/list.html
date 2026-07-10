@@ -20,7 +20,7 @@
               <td>{{ video.profile.name }}</td>
               <td><span class="badge {{ video.status|status_class }}">{{ video.get_status_display }}</span></td>
               <td>{{ video.target_minutes }} min</td>
-              <td>${{ video.total_cost_usd }}</td>
+              <td>{{ video.total_cost_usd|pkr }}</td>
             </tr>
           {% endfor %}
         </tbody>

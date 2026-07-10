@@ -22,7 +22,7 @@ Goal of Phase 1: produce one complete long-form MP4 on local disk. Nothing else.
 | Target length | 1 to 2 hours of narration (configurable per video) |
 | Story structure | One continuous story split into ordered chapters/parts |
 | Visuals | A few images per chapter (default 3-6), each shown for minutes with a slow Ken Burns pan/zoom, crossfaded |
-| Narration | ElevenLabs, synthesized per chapter, concatenated; cost approved per chapter or per batch (behind a provider interface so it can be swapped) |
+| Narration | Kokoro TTS (local, free), synthesized per part and concatenated. Behind a provider interface. Steps still need a manual start (long job) but cost Rs 0 |
 | Subtitles | Optional and OFF by default in Phase 1 (long-form narration videos rarely burn captions; local Whisper can be enabled later) |
 
 ## Hard requirements (unchanged)
@@ -32,7 +32,7 @@ Goal of Phase 1: produce one complete long-form MP4 on local disk. Nothing else.
 3. **Local storage only**: every asset lives under the project `media/` folder.
 4. **Profiles**: a Profile is a content identity (niche, style/prompt template, default voice). Each Profile owns a list of generated videos.
 5. **Lifecycle visibility**: the UI shows videos in process plus full detail per video (title, story text per chapter, images, per-step status, costs).
-6. **Approval gate before spending money**: every step that calls a paid API (OpenAI, ElevenLabs) is created as `pending_approval` with an estimated cost and the exact payload. Nothing is sent to a paid API until the user approves. Free/local steps (FFmpeg render, optional local Whisper) run without approval.
+6. **Approval gate before spending money**: every step that calls a paid API (OpenAI script + images) is created as `pending_approval` with an estimated cost and the exact payload. Nothing is sent to a paid API until the user approves. Narration (Kokoro, local) and render (FFmpeg) are free; narration still waits for a manual start because it is a long job, but its estimate is Rs 0.
 
 ## Script first, then split
 
@@ -54,8 +54,8 @@ Paid steps marked [$].
 3.      Split Into Parts    (local, free) -> ordered chapters, each a slice of the completed script
                            (optional paid OpenAI pass to refine boundaries/titles)
 4. [$] Generate Images     (OpenAI Images) -> N images per part (default 3-6), 16:9
-5. [$] Generate Narration  (ElevenLabs, one synth per part) -> part_XX.mp3
-6.      Merge + Measure      (FFmpeg/ffprobe, free) -> concatenate part audio into narration.mp3,
+5.      Generate Narration  (Kokoro, local/free, one synth per part) -> part_XX.wav
+6.      Merge + Measure      (numpy/soundfile, free) -> concatenate part audio into narration.wav,
                             record per-part offsets and total duration
 7.      Render Video        (FFmpeg, free) -> final.mp4: per part, its images Ken-Burns-panned across that
                             part's audio span, crossfades between images and parts, ambient background
@@ -76,8 +76,9 @@ For every paid step:
 
 Long-form specifics:
 
-- **Batch approval**: because images (step 4) and narration (step 5) each fan out into many per-part calls, the UI offers a single "approve all images" / "approve all narration" action showing the **combined** estimate, in addition to per-part approval. The script step (step 2) also fans into several continuation calls; its estimate covers the whole target length. Nothing runs until approved.
-- **Budget cap**: `MAX_COST_PER_VIDEO_USD` in settings. The approval screen warns (and can block) when an approval would push the video's total over the cap. This matters most for narration, since 1-2 hours of ElevenLabs is the dominant cost.
+- **Batch approval**: images and narration each fan out per part. The UI offers "approve all images" / "approve all narration" (combined estimate) plus per-part approval, and a per-part "Generate this part" that runs that part's images + narration together. The script step also fans into several continuation calls; its estimate covers the whole target length.
+- **Part-by-part or stage-by-stage**: images and narration are both created right after the split (they only depend on the part text), so you can finish one part fully before the next, or run a whole stage at once. Merge + render fire automatically once every part has both.
+- **Budget cap**: `MAX_COST_PER_VIDEO_PKR` in settings (shown/added in PKR). Since narration is now local/free, the dominant cost is images; the cap mainly guards the image stage.
 
 Because every paid step waits on a human click, Phase 1 needs **no background queue**: an approved step runs synchronously (long steps like full narration/render run via a management command or a long-timeout request). Celery arrives in a later phase.
 
@@ -88,12 +89,12 @@ Rough per-video envelope at 90 minutes (~13,500 words / ~80,000 characters):
 | Item | Rough cost |
 |------|-----------|
 | Full script (OpenAI text, continuation calls) | ~$0.30 - 1.50 depending on model |
-| Images (say 12 parts x 4 = ~48 images) | ~$1 - 4 |
-| ElevenLabs narration (~80k chars) | **the big one — potentially $10s** depending on plan/tier |
+| Images (say 12 parts x 4 = ~48 images) | ~$1 - 4 (**the dominant cost**) |
+| Kokoro narration (local) | free |
 | Whisper subtitles (local, optional) | free |
 | FFmpeg render | free |
 
-Narration dominates, so the plan treats it as the step that most needs explicit, budget-aware approval. A local-TTS provider can be dropped in behind the same interface later to cut this dramatically.
+With Kokoro narration and local render, the only paid steps are the OpenAI script and images, so images are the dominant cost and what the budget cap mainly guards.
 
 ## Data model (MySQL via Django ORM)
 
@@ -105,7 +106,7 @@ name                 e.g. "Midnight Horror Narrations"
 niche                e.g. horror | history | sci-fi | bedtime ...
 description
 style_prompt         system/style prompt used for story + image generation
-elevenlabs_voice_id  default narrator voice
+narrator_voice       default narrator voice (Kokoro voice, e.g. af_heart)
 language             default "en"
 created_at / updated_at
 
@@ -121,6 +122,7 @@ description          long-form description (stored for later phases)
 hashtags             JSON list
 status               draft | script | split | images | narration |
                      rendering | completed | failed
+                     (furthest stage reached)
                      (furthest pipeline stage reached / in progress)
 total_words          nullable, filled as the script grows
 duration_seconds     nullable, measured after narration concat
@@ -138,7 +140,7 @@ chapter_number       1..N (ordered)
 title                short part title (from split step)
 body                 this part's slice of the full script (narrated text)
 word_count           words in this part
-narration_audio_path relative path (part_XX.mp3)
+narration_audio_path relative path (part_XX.wav)
 audio_start_seconds  offset within the full track (filled after concat)
 audio_end_seconds
 created_at / updated_at
@@ -157,8 +159,8 @@ GenerationStep
 id
 video_id             FK -> Video
 chapter_id           FK -> Chapter, nullable (null = video-level step)
-step_type            script | split | images | narration | render | subtitles
-provider             openai | elevenlabs | local
+step_type            script | split | images | narration | merge | render | subtitles
+provider             openai | local
 status               pending_approval | approved | running | completed |
                      failed | rejected
 request_payload      JSON (model, prompt, params shown pre-approval)
@@ -190,7 +192,7 @@ media/
         01/ img_1.png img_2.png ...   part_01.mp3
         02/ img_1.png img_2.png ...   part_02.mp3
         ...
-      narration.mp3        concatenated full track
+      narration.wav        concatenated full track
       subtitles.srt        optional
       final.mp4
 assets/
@@ -229,7 +231,7 @@ ai-generated-short-videos/
 │       ├── integrations/
 │       │   ├── base.py         LLMProvider / ImageProvider / TTSProvider interfaces
 │       │   ├── openai_provider.py
-│       │   ├── elevenlabs_provider.py
+│       │   ├── kokoro_provider.py
 │       │   ├── whisper_local.py
 │       │   └── ffmpeg_renderer.py
 │       ├── views.py            video list, detail, create, approve/reject step, batch approve
@@ -248,17 +250,18 @@ Layering rules:
 - **views** call **services** only.
 - **services** hold business logic and pipeline orchestration; they talk to **repositories** for persistence and **integrations** for external APIs.
 - **repositories** are the only layer that runs ORM queries.
-- **integrations** are thin clients behind interfaces, so a provider (e.g. local TTS instead of ElevenLabs) can be swapped without touching services.
+- **integrations** are thin clients behind interfaces, so a TTS provider can be swapped without touching services (Kokoro is used now).
 
 ## Tech / dependencies
 
-- Python 3.12+, Django 5.x
+- Python 3.10+, Django 5.2
 - mysqlclient
 - openai (official SDK) — text + images
-- elevenlabs (official SDK) — narration
-- faster-whisper — optional local subtitles
-- ffmpeg + ffprobe on PATH (invoked via subprocess) — concat, timing, render
-- python-dotenv or django-environ for `.env`
+- kokoro-onnx — local narration (bundles espeak-ng via espeakng-loader; no system install)
+- numpy + soundfile — audio synth output, part merge, duration measurement
+- ffmpeg + ffprobe (invoked via subprocess; path set in .env) — render
+- faster-whisper — optional local subtitles (later)
+- python-dotenv for `.env`
 - Frontend: plain Django templates + light CSS (no SPA in Phase 1)
 
 `.env` keys:
@@ -272,9 +275,15 @@ DB_PASSWORD=
 DB_HOST=127.0.0.1
 DB_PORT=3306
 OPENAI_API_KEY=
-ELEVENLABS_API_KEY=
-MAX_COST_PER_VIDEO_USD=25
+TTS_PROVIDER=kokoro
+DEFAULT_KOKORO_VOICE=af_heart
+USD_TO_PKR=280
+MAX_COST_PER_VIDEO_PKR=7000
+FFMPEG_BINARY=ffmpeg
+FFPROBE_BINARY=ffprobe
 ```
+
+Kokoro model files (`kokoro-v1.0.onnx`, `voices-v1.0.bin`) live under `assets/kokoro/`.
 
 ## UI pages (Phase 1, minimal)
 
@@ -298,14 +307,14 @@ MAX_COST_PER_VIDEO_USD=25
 | 4 | Script step | OpenAI continuation calls -> full 1-2 hour script + title, description, hashtags; length driven by target minutes; stored on Video |
 | 5 | Split step | Split completed script into ordered parts (local, free) by target duration / natural breaks; create Chapter rows |
 | 6 | Images step | OpenAI Images, N per part, 16:9, saved to media, shown per part |
-| 7 | Narration step | ElevenLabs per part -> part_XX.mp3, merge -> narration.mp3, measure per-part offsets with ffprobe |
+| 7 | Narration step | Kokoro (local) per part -> part_XX.wav, merge -> narration.wav, per-part offsets via sample counts |
 | 8 | Render step | FFmpeg: per part, its images Ken-Burns-panned across that part's audio span, crossfades, ambient music ducked under narration, 1920x1080 final.mp4 |
 | 9 | Polish | Status badges, error surfacing, regenerate buttons, per-profile cost totals, end-to-end run of one full long-form video |
 | 10 | Optional subtitles | Local faster-whisper SRT + optional burned captions (off by default) |
 
-Definition of done for Phase 1: from a premise + target minutes, a user clicks through approvals (script, images, narration), the script is split into parts and the narration is merged into one track, and they end with a watchable 1-2 hour `final.mp4` on disk, with every dollar spent shown and pre-approved.
+Definition of done for Phase 1: from a premise + target minutes, a user approves the paid steps (script, images), generates narration (free, Kokoro) part-by-part or in batch, and the narration is merged and rendered into a watchable 1-2 hour `final.mp4` on disk, with every paid step pre-approved and costs shown in PKR.
 
 ## Later phases (recorded for direction, not now)
 
-- **Phase 2**: thumbnail generation, YouTube Data API upload with OAuth, Celery + Redis so long narration/render run in the background, full-pipeline budget approval up front.
-- **Phase 3**: scheduling, multiple videos per profile, analytics, Docker Compose, object storage (S3/R2), cheaper providers (local Flux images, local/Piper TTS to slash narration cost), optional AI video clips, cross-posting.
+- **Phase 2**: thumbnail generation, YouTube Data API upload with OAuth, Celery + Redis so long narration/render run in a real queue, full-pipeline budget approval up front.
+- **Phase 3**: scheduling, multiple videos per profile, analytics, Docker Compose, object storage (S3/R2), cheaper/local image models (e.g. Flux), optional premium TTS or AI video clips, cross-posting.

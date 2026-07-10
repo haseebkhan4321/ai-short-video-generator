@@ -19,6 +19,7 @@ class StepType(models.TextChoices):
     SPLIT = "split", "Split into parts"
     IMAGES = "images", "Generate images"
     NARRATION = "narration", "Generate narration"
+    MERGE = "merge", "Merge narration"
     RENDER = "render", "Render video"
     SUBTITLES = "subtitles", "Generate subtitles"
 
@@ -145,6 +146,11 @@ class GenerationStep(models.Model):
 
     request_payload = models.JSONField(default=dict, blank=True)
     response_metadata = models.JSONField(default=dict, blank=True)
+
+    # Live progress for background execution.
+    progress_current = models.PositiveIntegerField(default=0)
+    progress_total = models.PositiveIntegerField(default=0)
+    progress_message = models.CharField(max_length=255, blank=True)
 
     estimated_cost_usd = models.DecimalField(
         max_digits=10, decimal_places=4, default=0

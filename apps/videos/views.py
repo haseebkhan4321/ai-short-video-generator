@@ -1,11 +1,12 @@
 from django.conf import settings
 from django.contrib import messages
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from .forms import VideoCreateForm
 from .models import StepStatus, StepType
+from .services.currency import format_usd_as_pkr
 from .services.pipeline import (
     BudgetExceededError,
     PipelineService,
@@ -13,6 +14,8 @@ from .services.pipeline import (
     StepTypeNotImplemented,
 )
 from .services.video_service import VideoService
+
+ACTIVE_STEP_STATUSES = {StepStatus.APPROVED, StepStatus.RUNNING}
 
 
 def video_list(request):
@@ -40,16 +43,91 @@ def video_create(request):
     return render(request, "videos/form.html", {"form": form})
 
 
+def _collapse_latest(raw_steps):
+    """Keep only the most recent step per (step_type, chapter) so retries don't
+    pile up as extra rows."""
+    latest = {}
+    for step in raw_steps:
+        latest[(step.step_type, step.chapter_id)] = step
+    return sorted(latest.values(), key=lambda s: s.created_at)
+
+
+STAGE_DEFS = [
+    ("script", "Script"),
+    ("split", "Split"),
+    ("images", "Images"),
+    ("narration", "Narration"),
+    ("render", "Render"),
+]
+
+
+def _compute_stages(video, chapters, steps):
+    """Build a stepper (Script -> Render) from what the video actually has, so the
+    header shows pipeline progress instead of one verbose status label."""
+    image_steps = [s for s in steps if s.step_type == StepType.IMAGES]
+    narration_steps = [s for s in steps if s.step_type == StepType.NARRATION]
+
+    done_flags = {
+        "script": bool(video.script),
+        "split": len(chapters) > 0,
+        "images": bool(image_steps)
+        and all(s.status == StepStatus.COMPLETED for s in image_steps),
+        "narration": bool(narration_steps)
+        and all(s.status == StepStatus.COMPLETED for s in narration_steps),
+        "render": bool(video.final_video_path),
+    }
+
+    # First stage that isn't done is the "current" one.
+    current_key = next((k for k, _ in STAGE_DEFS if not done_flags[k]), None)
+    is_failed = video.status == "failed"
+
+    stages = []
+    for key, label in STAGE_DEFS:
+        if done_flags[key]:
+            state = "done"
+        elif key == current_key:
+            state = "failed" if is_failed else "current"
+        else:
+            state = "todo"
+        stages.append({"label": label, "state": state})
+    return stages
+
+
 def video_detail(request, video_id):
     video = VideoService.get_video(video_id)
     if video is None:
         raise Http404("Video not found")
 
-    chapters = VideoService.chapters_for(video_id)
-    steps = VideoService.steps_for(video_id)
+    # Backfill any missing per-part steps (old splits / part-by-part flow), then
+    # kick any step left waiting (e.g. a free step whose executor now exists).
+    PipelineService.ensure_asset_steps(video)
+    PipelineService.resume_waiting_steps(video)
 
-    # Group pending paid steps by type so batch approvals can show a combined
-    # estimate for fan-out stages (images, narration).
+    chapters = VideoService.chapters_for(video_id)
+    steps = _collapse_latest(list(VideoService.steps_for(video_id)))
+
+    # Per-part step map for the Parts UI (images + narration live under a part).
+    steps_by_chapter = {}
+    for s in steps:
+        if s.chapter_id:
+            steps_by_chapter.setdefault(s.chapter_id, {})[s.step_type] = s
+    parts = []
+    for ch in chapters:
+        cs = steps_by_chapter.get(ch.pk, {})
+        image_step = cs.get(StepType.IMAGES)
+        narration_step = cs.get(StepType.NARRATION)
+        pending = [
+            x for x in (image_step, narration_step)
+            if x and x.status == StepStatus.PENDING_APPROVAL
+        ]
+        parts.append({
+            "chapter": ch,
+            "image_step": image_step,
+            "narration_step": narration_step,
+            "pending_estimate": sum(float(x.estimated_cost_usd) for x in pending),
+            "pending_count": len(pending),
+        })
+
     pending_by_type = {}
     for step in steps:
         if step.status == StepStatus.PENDING_APPROVAL and step.provider != "local":
@@ -60,9 +138,9 @@ def video_detail(request, video_id):
             bucket["count"] += 1
             bucket["estimate"] += float(step.estimated_cost_usd)
 
-    batchable = {
-        k: v for k, v in pending_by_type.items() if v["count"] > 1
-    }
+    batchable = {k: v for k, v in pending_by_type.items() if v["count"] > 1}
+    has_active = any(s.status in ACTIVE_STEP_STATUSES for s in steps)
+    signature = "|".join(f"{s.pk}:{s.status}" for s in steps)
 
     return render(
         request,
@@ -73,8 +151,38 @@ def video_detail(request, video_id):
             "steps": steps,
             "batchable": batchable,
             "budget_cap": PipelineService.budget_cap(),
+            "has_active": has_active,
+            "initial_signature": signature,
+            "stages": _compute_stages(video, list(chapters), steps),
+            "parts": parts,
         },
     )
+
+
+def video_status(request, video_id):
+    """Lightweight JSON for the detail page to poll while steps run."""
+    video = VideoService.get_video(video_id)
+    if video is None:
+        raise Http404("Video not found")
+    steps = _collapse_latest(list(VideoService.steps_for(video_id)))
+    payload = {
+        "video_status": video.status,
+        "active": any(s.status in ACTIVE_STEP_STATUSES for s in steps),
+        # signature changes whenever a status changes or a step is added/removed
+        "signature": "|".join(f"{s.pk}:{s.status}" for s in steps),
+        "steps": [
+            {
+                "id": s.pk,
+                "status": s.status,
+                "status_display": s.get_status_display(),
+                "progress_current": s.progress_current,
+                "progress_total": s.progress_total,
+                "progress_message": s.progress_message,
+            }
+            for s in steps
+        ],
+    }
+    return JsonResponse(payload)
 
 
 def _get_step_or_404(step_id):
@@ -90,8 +198,10 @@ def step_approve(request, video_id, step_id):
     step = _get_step_or_404(step_id)
     force = request.POST.get("force") == "1"
     try:
-        PipelineService.approve_step(step, force=force)
-        messages.success(request, f"Approved: {step.get_step_type_display()}.")
+        PipelineService.approve_step_background(step, force=force)
+        messages.success(
+            request, f"Approved: {step.get_step_type_display()} — running in background."
+        )
     except BudgetExceededError as exc:
         messages.warning(request, str(exc) + " Use 'Approve anyway' to override.")
     except StepTypeNotImplemented as exc:
@@ -114,13 +224,44 @@ def step_reject(request, video_id, step_id):
 
 
 def step_regenerate(request, video_id, step_id):
+    """Retry a failed/rejected step in place (resets the same row to pending)."""
     if request.method != "POST":
         return redirect(reverse("videos:detail", args=[video_id]))
     step = _get_step_or_404(step_id)
-    PipelineService.regenerate_step(step)
-    messages.success(
-        request, f"New pending {step.get_step_type_display()} created for approval."
-    )
+    try:
+        PipelineService.retry_step(step)
+        messages.success(
+            request,
+            f"{step.get_step_type_display()} reset to pending — review and approve.",
+        )
+    except StepNotActionableError as exc:
+        messages.error(request, str(exc))
+    return redirect(reverse("videos:detail", args=[video_id]))
+
+
+def part_approve(request, video_id, chapter_id):
+    """Approve + run all pending steps for one part (its images and narration)."""
+    if request.method != "POST":
+        return redirect(reverse("videos:detail", args=[video_id]))
+    video = VideoService.get_video(video_id)
+    if video is None:
+        raise Http404("Video not found")
+    force = request.POST.get("force") == "1"
+    try:
+        approved = PipelineService.approve_chapter_background(
+            video, chapter_id, force=force
+        )
+        if approved:
+            messages.success(
+                request,
+                f"Generating this part ({len(approved)} step(s)) in the background.",
+            )
+        else:
+            messages.info(request, "Nothing pending for this part.")
+    except BudgetExceededError as exc:
+        messages.warning(request, str(exc) + " Use 'Generate anyway' to override.")
+    except StepTypeNotImplemented as exc:
+        messages.error(request, str(exc))
     return redirect(reverse("videos:detail", args=[video_id]))
 
 
@@ -136,8 +277,10 @@ def step_batch_approve(request, video_id):
         messages.error(request, "Unknown step type.")
         return redirect(reverse("videos:detail", args=[video_id]))
     try:
-        approved = PipelineService.batch_approve(video, step_type, force=force)
-        messages.success(request, f"Approved {len(approved)} step(s).")
+        approved = PipelineService.batch_approve_background(video, step_type, force=force)
+        messages.success(
+            request, f"Approved {len(approved)} step(s) — running in background."
+        )
     except BudgetExceededError as exc:
         messages.warning(request, str(exc) + " Use 'Approve all anyway' to override.")
     except StepTypeNotImplemented as exc:

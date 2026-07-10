@@ -4,18 +4,25 @@
 {% block content %}
   <p><a href="{% url 'videos:list' %}">&larr; Videos</a></p>
 
-  <div class="row" style="justify-content: space-between; align-items: flex-start;">
-    <div>
-      <h1 style="margin-bottom:4px;">{{ video.title|default:video.premise|truncatechars:80 }}</h1>
-      <div class="muted">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px;">
+    <div style="min-width:0; flex:1;">
+      <h1 style="margin:0 0 4px; overflow-wrap:anywhere;">{{ video.title|default:video.premise|truncatechars:80 }}</h1>
+      <div class="muted" style="margin-bottom:10px;">
         Profile: <a href="{% url 'profiles:detail' video.profile.pk %}">{{ video.profile.name }}</a>
-        &nbsp;·&nbsp; <span class="badge {{ video.status|status_class }}">{{ video.get_status_display }}</span>
+        {% if video.status == "completed" %}&nbsp;·&nbsp; <span class="badge green">Completed</span>{% endif %}
+        {% if video.status == "failed" %}&nbsp;·&nbsp; <span class="badge red">Failed</span>{% endif %}
+      </div>
+      <div class="stepper">
+        {% for s in stages %}
+          <span class="step {{ s.state }}">{{ s.label }}</span>
+          {% if not forloop.last %}<span class="step-sep"></span>{% endif %}
+        {% endfor %}
       </div>
     </div>
-    <a class="btn secondary" href="{% url 'videos:delete' video.pk %}">Delete</a>
+    <a class="btn secondary" style="flex:0 0 auto;" href="{% url 'videos:delete' video.pk %}">Delete</a>
   </div>
 
-  {% if video.error_message %}
+  {% if video.error_message and video.status == "failed" %}
     <div class="card" style="border-color: var(--red);">
       <strong style="color:var(--red);">Error:</strong> {{ video.error_message }}
     </div>
@@ -28,8 +35,8 @@
         {% if video.duration_seconds %}{{ video.duration_seconds|floatformat:0 }} s{% else %}—{% endif %}
       </div>
       <div><div class="muted">Words</div>{{ video.total_words|default:"—" }}</div>
-      <div><div class="muted">Total spent</div>${{ video.total_cost_usd }}</div>
-      <div><div class="muted">Budget cap</div>${{ budget_cap }}</div>
+      <div><div class="muted">Total spent</div>{{ video.total_cost_usd|pkr }}</div>
+      <div><div class="muted">Budget cap</div>{{ budget_cap|pkr }}</div>
     </div>
     <div style="margin-top:14px;"><div class="muted">Premise</div>{{ video.premise }}</div>
   </div>
@@ -68,7 +75,7 @@
           {% csrf_token %}
           <input type="hidden" name="step_type" value="{{ step_type }}">
           <button type="submit" class="btn green">
-            Approve all {{ info.count }} {{ info.label|lower }} (~${{ info.estimate|floatformat:4 }})
+            Approve all {{ info.count }} {{ info.label|lower }} (~{{ info.estimate|pkr }})
           </button>
         </form>
       {% endfor %}
@@ -76,14 +83,35 @@
   {% endif %}
 
   {# ---- Parts / chapters ---- #}
-  {% if chapters %}
-    <h2>Parts ({{ chapters|length }})</h2>
-    {% for chapter in chapters %}
-      <div class="card">
-        <div class="row" style="justify-content:space-between;">
+  {% if parts %}
+    <h2>Parts ({{ parts|length }})</h2>
+    {% for part in parts %}
+      {% with chapter=part.chapter %}
+      <div class="card" data-part="{{ chapter.pk }}">
+        <div class="row" style="justify-content:space-between; align-items:center;">
           <strong>Part {{ chapter.chapter_number }}{% if chapter.title %}: {{ chapter.title }}{% endif %}</strong>
           <span class="muted">{{ chapter.word_count }} words</span>
         </div>
+
+        {# per-part status: images + narration #}
+        <div class="row" style="gap:10px; margin-top:8px; align-items:center;">
+          <span class="muted" style="font-size:13px;">Images:</span>
+          {% if part.image_step %}
+            <span class="badge {{ part.image_step.status|step_status_class }}">{{ part.image_step.get_status_display }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+          <span class="muted" style="font-size:13px;margin-left:12px;">Narration:</span>
+          {% if part.narration_step %}
+            <span class="badge {{ part.narration_step.status|step_status_class }}">{{ part.narration_step.get_status_display }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+
+          {% if part.pending_count %}
+            <form class="inline-form" method="post" action="{% url 'videos:part_approve' video.pk chapter.pk %}" style="margin-left:auto;">
+              {% csrf_token %}
+              <button type="submit" class="btn green">Generate this part (~{{ part.pending_estimate|pkr }})</button>
+            </form>
+          {% endif %}
+        </div>
+
         {% if chapter.images.all %}
           <div class="row" style="margin-top:10px;">
             {% for img in chapter.images.all %}
@@ -101,6 +129,7 @@
           <pre style="white-space:pre-wrap;margin-top:8px;">{{ chapter.body }}</pre>
         </details>
       </div>
+      {% endwith %}
     {% endfor %}
   {% endif %}
 
@@ -114,17 +143,18 @@
         </thead>
         <tbody>
           {% for step in steps %}
-            <tr>
+            <tr data-step="{{ step.pk }}">
               <td>
                 {{ step.get_step_type_display }}
                 {% if step.chapter_id %}<span class="muted">(part {{ step.chapter.chapter_number }})</span>{% endif %}
               </td>
               <td>{{ step.get_provider_display }}</td>
-              <td><span class="badge {{ step.status|step_status_class }}">{{ step.get_status_display }}</span>
+              <td>
+                <span class="badge {{ step.status|step_status_class }}" data-step-badge>{{ step.get_status_display }}</span>
                 {% if step.error_message %}<div class="badge red" style="margin-top:4px;">{{ step.error_message|truncatechars:80 }}</div>{% endif %}
               </td>
-              <td>${{ step.estimated_cost_usd }}</td>
-              <td>{% if step.actual_cost_usd is not None %}${{ step.actual_cost_usd }}{% else %}—{% endif %}</td>
+              <td>{{ step.estimated_cost_usd|pkr }}</td>
+              <td>{% if step.actual_cost_usd is not None %}{{ step.actual_cost_usd|pkr }}{% else %}—{% endif %}</td>
               <td>
                 {% if step.status == "pending_approval" %}
                   <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
@@ -143,8 +173,21 @@
                 {% elif step.status == "rejected" or step.status == "failed" %}
                   <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}">
                     {% csrf_token %}
-                    <button type="submit" class="btn secondary">Regenerate</button>
+                    <button type="submit" class="btn secondary">Retry</button>
                   </form>
+                {% elif step.status == "approved" or step.status == "running" %}
+                  <div data-step-work>
+                    <div class="muted" data-step-progress style="font-size:12px;">
+                      {{ step.progress_message|default:"Working…" }}{% if step.progress_total %} ({{ step.progress_current }}/{{ step.progress_total }}){% endif %}
+                    </div>
+                    {% if step.progress_total %}
+                      <div data-step-bar-wrap style="height:4px;width:130px;background:var(--border);border-radius:2px;margin-top:6px;">
+                        <div data-step-bar style="height:100%;width:0;background:var(--accent);border-radius:2px;"></div>
+                      </div>
+                    {% else %}
+                      <div class="progress-indeterminate" style="margin-top:6px;"></div>
+                    {% endif %}
+                  </div>
                 {% else %}
                   <span class="muted">—</span>
                 {% endif %}
@@ -157,4 +200,46 @@
   {% else %}
     <div class="card"><p class="muted">No steps yet.</p></div>
   {% endif %}
+
+  <script>
+    (function () {
+      var active = {{ has_active|yesno:"true,false" }};
+      if (!active) return;
+      var statusUrl = "{% url 'videos:status' video.pk %}";
+      var currentSig = "{{ initial_signature|escapejs }}";
+
+      function update(steps) {
+        steps.forEach(function (s) {
+          var row = document.querySelector('[data-step="' + s.id + '"]');
+          if (!row) return;
+          var line = row.querySelector('[data-step-progress]');
+          if (line) {
+            var txt = s.progress_message || '';
+            if (s.progress_total) txt += ' (' + s.progress_current + '/' + s.progress_total + ')';
+            line.textContent = txt;
+          }
+          var barWrap = row.querySelector('[data-step-bar-wrap]');
+          var bar = row.querySelector('[data-step-bar]');
+          if (bar && s.progress_total) {
+            if (barWrap) barWrap.style.display = '';
+            bar.style.width = Math.min(100, Math.round(100 * s.progress_current / s.progress_total)) + '%';
+          }
+          var badge = row.querySelector('[data-step-badge]');
+          if (badge) badge.textContent = s.status_display;
+        });
+      }
+
+      function tick() {
+        fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.signature !== currentSig) { location.reload(); return; }
+            update(data.steps);
+            if (data.active) setTimeout(tick, 2000);
+          })
+          .catch(function () { setTimeout(tick, 3000); });
+      }
+      setTimeout(tick, 1500);
+    })();
+  </script>
 {% endblock %}

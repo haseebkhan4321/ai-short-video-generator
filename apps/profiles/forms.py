@@ -14,7 +14,7 @@ class ProfileForm(forms.ModelForm):
             "niche",
             "description",
             "style_prompt",
-            "elevenlabs_voice_id",
+            "narrator_voice",
             "language",
         ]
         widgets = {
@@ -24,6 +24,7 @@ class ProfileForm(forms.ModelForm):
         help_texts = {
             "style_prompt": "Tone/style guidance injected into script and image "
             "prompts (e.g. 'slow, atmospheric horror narration in second person').",
-            "elevenlabs_voice_id": "ElevenLabs voice ID used for narration. Can be "
-            "left blank for now and set before the narration step.",
+            "narrator_voice": "Narrator voice for the active TTS provider (an "
+            "ElevenLabs voice ID, or a Kokoro voice like 'af_heart'). Blank uses "
+            "the default.",
         }

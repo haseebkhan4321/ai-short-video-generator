@@ -13,7 +13,7 @@ the original brief.
 
 - Django 5.2 (repository pattern: views -> services -> repositories -> ORM)
 - MySQL (Laragon)
-- OpenAI (script + images), ElevenLabs (narration), FFmpeg (render, local)
+- OpenAI (script + images), Kokoro TTS (narration, local/free), FFmpeg (render, local)
 - Local storage only in Phase 1 (no Docker, S3, Celery, or YouTube upload)
 
 ## Setup
@@ -65,10 +65,10 @@ docs/              Plan + brief
 - [x] Milestone 1: project skeleton, MySQL, models, migrations, base UI
 - [x] Milestone 2: profiles CRUD
 - [x] Milestone 3: video + approval framework
-- [ ] Milestone 4: script step (OpenAI)
-- [ ] Milestone 5: split step
-- [ ] Milestone 6: images step (OpenAI)
-- [ ] Milestone 7: narration step (ElevenLabs) + merge
-- [ ] Milestone 8: render step (FFmpeg)
+- [x] Milestone 4: script step (OpenAI)
+- [x] Milestone 5: split step
+- [x] Milestone 6: images step (OpenAI)
+- [x] Milestone 7: narration step (Kokoro, local/free) + merge
+- [x] Milestone 8: render step (FFmpeg)
 - [ ] Milestone 9: polish + end-to-end
 - [ ] Milestone 10: optional subtitles (local Whisper)
