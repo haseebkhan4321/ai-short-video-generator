@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load video_extras %}
+{% block title %}Videos{% endblock %}
+{% block content %}
+  <div class="row" style="justify-content: space-between; align-items: center;">
+    <h1>Videos</h1>
+    <a class="btn" href="{% url 'videos:create' %}">+ New video</a>
+  </div>
+
+  {% if videos %}
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Title</th><th>Profile</th><th>Status</th><th>Target</th><th>Cost</th></tr>
+        </thead>
+        <tbody>
+          {% for video in videos %}
+            <tr>
+              <td><a href="{% url 'videos:detail' video.pk %}">{{ video }}</a></td>
+              <td>{{ video.profile.name }}</td>
+              <td><span class="badge {{ video.status|status_class }}">{{ video.get_status_display }}</span></td>
+              <td>{{ video.target_minutes }} min</td>
+              <td>${{ video.total_cost_usd }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card">
+      <p class="muted">No videos yet. Create one to start the pipeline.</p>
+      <a class="btn" href="{% url 'videos:create' %}">+ New video</a>
+    </div>
+  {% endif %}
+{% endblock %}

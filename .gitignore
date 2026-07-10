@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Django
+*.log
+db.sqlite3
+local_settings.py
+
+# Secrets
+.env
+
+# Generated media (keep the folder, ignore contents)
+/media/*
+!/media/.gitkeep
+
+# User-supplied assets that are large / not source
+/assets/music/*
+!/assets/music/.gitkeep
+/assets/fonts/*
+!/assets/fonts/.gitkeep
+
+# Static build output
+/staticfiles/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

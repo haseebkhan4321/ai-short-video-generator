@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+  <p><a href="{% url 'profiles:list' %}">&larr; Profiles</a></p>
+  <h1>{{ title }}</h1>
+
+  <div class="card" style="max-width: 720px;">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% for field in form %}
+        <div>
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="muted" style="font-size:13px;margin-top:4px;">{{ field.help_text }}</div>{% endif %}
+          {% for error in field.errors %}<div class="badge red" style="margin-top:6px;">{{ error }}</div>{% endfor %}
+        </div>
+      {% endfor %}
+      <div style="margin-top: 20px;">
+        <button type="submit" class="btn">Save</button>
+        <a class="btn secondary" href="{% url 'profiles:list' %}">Cancel</a>
+        {% if profile %}
+          <a class="btn red" style="float:right;" href="{% url 'profiles:delete' profile.pk %}">Delete</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+{% endblock %}

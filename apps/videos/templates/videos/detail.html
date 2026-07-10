@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% load video_extras %}
+{% block title %}{{ video }}{% endblock %}
+{% block content %}
+  <p><a href="{% url 'videos:list' %}">&larr; Videos</a></p>
+
+  <div class="row" style="justify-content: space-between; align-items: flex-start;">
+    <div>
+      <h1 style="margin-bottom:4px;">{{ video.title|default:video.premise|truncatechars:80 }}</h1>
+      <div class="muted">
+        Profile: <a href="{% url 'profiles:detail' video.profile.pk %}">{{ video.profile.name }}</a>
+        &nbsp;·&nbsp; <span class="badge {{ video.status|status_class }}">{{ video.get_status_display }}</span>
+      </div>
+    </div>
+    <a class="btn secondary" href="{% url 'videos:delete' video.pk %}">Delete</a>
+  </div>
+
+  {% if video.error_message %}
+    <div class="card" style="border-color: var(--red);">
+      <strong style="color:var(--red);">Error:</strong> {{ video.error_message }}
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="row" style="gap: 40px;">
+      <div><div class="muted">Target length</div>{{ video.target_minutes }} min</div>
+      <div><div class="muted">Actual length</div>
+        {% if video.duration_seconds %}{{ video.duration_seconds|floatformat:0 }} s{% else %}—{% endif %}
+      </div>
+      <div><div class="muted">Words</div>{{ video.total_words|default:"—" }}</div>
+      <div><div class="muted">Total spent</div>${{ video.total_cost_usd }}</div>
+      <div><div class="muted">Budget cap</div>${{ budget_cap }}</div>
+    </div>
+    <div style="margin-top:14px;"><div class="muted">Premise</div>{{ video.premise }}</div>
+  </div>
+
+  {% if video.final_video_path %}
+    <div class="card">
+      <h2>Final video</h2>
+      <video controls style="width:100%;max-width:900px;" src="/media/{{ video.final_video_path }}"></video>
+    </div>
+  {% endif %}
+
+  {% if video.narration_audio_path %}
+    <div class="card">
+      <h2>Full narration</h2>
+      <audio controls style="width:100%;" src="/media/{{ video.narration_audio_path }}"></audio>
+    </div>
+  {% endif %}
+
+  {% if video.script %}
+    <div class="card">
+      <details>
+        <summary style="cursor:pointer;"><strong>Script</strong> <span class="muted">({{ video.total_words|default:0 }} words)</span></summary>
+        <pre style="white-space:pre-wrap;margin-top:12px;">{{ video.script }}</pre>
+      </details>
+      {% if video.description %}<div style="margin-top:12px;"><div class="muted">Description</div>{{ video.description }}</div>{% endif %}
+      {% if video.hashtags %}<div style="margin-top:12px;"><div class="muted">Hashtags</div>{{ video.hashtags|join:" " }}</div>{% endif %}
+    </div>
+  {% endif %}
+
+  {# ---- Batch approvals for fan-out stages ---- #}
+  {% if batchable %}
+    <div class="card" style="border-color: var(--amber);">
+      <h3 style="margin-top:0;">Batch approvals</h3>
+      {% for step_type, info in batchable.items %}
+        <form class="inline-form" method="post" action="{% url 'videos:batch_approve' video.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="step_type" value="{{ step_type }}">
+          <button type="submit" class="btn green">
+            Approve all {{ info.count }} {{ info.label|lower }} (~${{ info.estimate|floatformat:4 }})
+          </button>
+        </form>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# ---- Parts / chapters ---- #}
+  {% if chapters %}
+    <h2>Parts ({{ chapters|length }})</h2>
+    {% for chapter in chapters %}
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <strong>Part {{ chapter.chapter_number }}{% if chapter.title %}: {{ chapter.title }}{% endif %}</strong>
+          <span class="muted">{{ chapter.word_count }} words</span>
+        </div>
+        {% if chapter.images.all %}
+          <div class="row" style="margin-top:10px;">
+            {% for img in chapter.images.all %}
+              {% if img.image_path %}
+                <img src="/media/{{ img.image_path }}" style="height:90px;border-radius:6px;border:1px solid var(--border);">
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% if chapter.narration_audio_path %}
+          <audio controls style="width:100%;margin-top:10px;" src="/media/{{ chapter.narration_audio_path }}"></audio>
+        {% endif %}
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer;" class="muted">Text</summary>
+          <pre style="white-space:pre-wrap;margin-top:8px;">{{ chapter.body }}</pre>
+        </details>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  {# ---- Steps timeline ---- #}
+  <h2>Steps</h2>
+  {% if steps %}
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Step</th><th>Provider</th><th>Status</th><th>Est.</th><th>Actual</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for step in steps %}
+            <tr>
+              <td>
+                {{ step.get_step_type_display }}
+                {% if step.chapter_id %}<span class="muted">(part {{ step.chapter.chapter_number }})</span>{% endif %}
+              </td>
+              <td>{{ step.get_provider_display }}</td>
+              <td><span class="badge {{ step.status|step_status_class }}">{{ step.get_status_display }}</span>
+                {% if step.error_message %}<div class="badge red" style="margin-top:4px;">{{ step.error_message|truncatechars:80 }}</div>{% endif %}
+              </td>
+              <td>${{ step.estimated_cost_usd }}</td>
+              <td>{% if step.actual_cost_usd is not None %}${{ step.actual_cost_usd }}{% else %}—{% endif %}</td>
+              <td>
+                {% if step.status == "pending_approval" %}
+                  <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn green">Approve</button>
+                  </form>
+                  <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="force" value="1">
+                    <button type="submit" class="btn secondary" title="Ignore budget cap">Approve anyway</button>
+                  </form>
+                  <form class="inline-form" method="post" action="{% url 'videos:step_reject' video.pk step.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn red">Reject</button>
+                  </form>
+                {% elif step.status == "rejected" or step.status == "failed" %}
+                  <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn secondary">Regenerate</button>
+                  </form>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card"><p class="muted">No steps yet.</p></div>
+  {% endif %}
+{% endblock %}

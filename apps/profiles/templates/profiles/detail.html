@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.name }}{% endblock %}
+{% block content %}
+  <p><a href="{% url 'profiles:list' %}">&larr; Profiles</a></p>
+  <div class="row" style="justify-content: space-between; align-items: center;">
+    <h1>{{ profile.name }}</h1>
+    <a class="btn secondary" href="{% url 'profiles:edit' profile.pk %}">Edit profile</a>
+  </div>
+
+  <div class="card">
+    <div class="row" style="gap: 40px;">
+      <div><div class="muted">Niche</div>{{ profile.niche|default:"—" }}</div>
+      <div><div class="muted">Language</div>{{ profile.language }}</div>
+      <div><div class="muted">Voice ID</div>{{ profile.elevenlabs_voice_id|default:"—" }}</div>
+    </div>
+    {% if profile.description %}
+      <div style="margin-top:14px;"><div class="muted">Description</div>{{ profile.description }}</div>
+    {% endif %}
+    {% if profile.style_prompt %}
+      <div style="margin-top:14px;"><div class="muted">Style prompt</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 0;">{{ profile.style_prompt }}</pre>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="row" style="justify-content: space-between; align-items: center;">
+    <h2>Videos</h2>
+    {# New-video creation arrives in milestone 3 #}
+  </div>
+  {% if videos %}
+    <div class="card">
+      <table>
+        <thead><tr><th>Title</th><th>Status</th><th>Target</th><th>Cost</th></tr></thead>
+        <tbody>
+          {% for video in videos %}
+            <tr>
+              <td>{{ video }}</td>
+              <td><span class="badge">{{ video.get_status_display }}</span></td>
+              <td>{{ video.target_minutes }} min</td>
+              <td>${{ video.total_cost_usd }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card"><p class="muted">No videos for this profile yet.</p></div>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,91 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AI Story Video Studio{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #0f1115; --panel: #191c23; --panel-2: #21252e;
+      --text: #e6e8ec; --muted: #9aa2ad; --border: #2b303a;
+      --accent: #6c8cff; --green: #3fb950; --red: #f85149;
+      --amber: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header.topbar {
+      display: flex; align-items: center; gap: 20px;
+      padding: 14px 24px; background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    header.topbar .brand { font-weight: 700; color: var(--text); }
+    header.topbar nav a { color: var(--muted); margin-right: 16px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+    h1, h2, h3 { line-height: 1.25; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 18px 20px; margin-bottom: 18px;
+    }
+    .btn {
+      display: inline-block; padding: 8px 14px; border-radius: 7px;
+      background: var(--accent); color: #fff; border: none; cursor: pointer;
+      font-size: 14px;
+    }
+    .btn:hover { text-decoration: none; opacity: .92; }
+    .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+    .btn.green { background: var(--green); }
+    .btn.red { background: var(--red); }
+    .muted { color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 13px; }
+    .badge {
+      display: inline-block; padding: 2px 9px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; background: var(--panel-2);
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.green { color: var(--green); border-color: var(--green); }
+    .badge.red { color: var(--red); border-color: var(--red); }
+    .badge.amber { color: var(--amber); border-color: var(--amber); }
+    .badge.accent { color: var(--accent); border-color: var(--accent); }
+    input, textarea, select {
+      width: 100%; padding: 9px 11px; background: var(--panel-2);
+      border: 1px solid var(--border); border-radius: 7px; color: var(--text);
+      font: inherit;
+    }
+    label { display: block; margin: 12px 0 5px; font-size: 14px; color: var(--muted); }
+    .messages { list-style: none; padding: 0; margin: 0 0 18px; }
+    .messages li { padding: 10px 14px; border-radius: 7px; margin-bottom: 8px; }
+    .messages .success { background: rgba(63,185,80,.15); border: 1px solid var(--green); }
+    .messages .error { background: rgba(248,81,73,.15); border: 1px solid var(--red); }
+    .messages .warning { background: rgba(210,153,34,.15); border: 1px solid var(--amber); }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .inline-form { display: inline; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">🎬 AI Story Video Studio</span>
+    <nav>
+      <a href="{% url 'profiles:list' %}">Profiles</a>
+      <a href="{% url 'videos:list' %}">Videos</a>
+    </nav>
+  </header>
+  <main>
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li class="{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

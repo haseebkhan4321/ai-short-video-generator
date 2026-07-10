@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}New video{% endblock %}
+{% block content %}
+  <p><a href="{% url 'videos:list' %}">&larr; Videos</a></p>
+  <h1>New video</h1>
+
+  <div class="card" style="max-width: 720px;">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% for field in form %}
+        <div>
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="muted" style="font-size:13px;margin-top:4px;">{{ field.help_text }}</div>{% endif %}
+          {% for error in field.errors %}<div class="badge red" style="margin-top:6px;">{{ error }}</div>{% endfor %}
+        </div>
+      {% endfor %}
+      <div style="margin-top: 20px;">
+        <button type="submit" class="btn">Create &amp; review script step</button>
+        <a class="btn secondary" href="{% url 'videos:list' %}">Cancel</a>
+      </div>
+      <p class="muted" style="margin-top:14px;font-size:13px;">
+        Creating a video only queues the first step for approval. No paid API call
+        happens until you approve it.
+      </p>
+    </form>
+  </div>
+{% endblock %}

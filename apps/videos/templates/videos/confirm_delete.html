@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Delete video{% endblock %}
+{% block content %}
+  <h1>Delete video</h1>
+  <div class="card" style="max-width: 640px;">
+    <p>Delete <strong>{{ video }}</strong>? This removes its script, parts, images,
+      steps, and cost history. This cannot be undone.</p>
+    <form method="post">
+      {% csrf_token %}
+      <button type="submit" class="btn red">Delete permanently</button>
+      <a class="btn secondary" href="{% url 'videos:detail' video.pk %}">Cancel</a>
+    </form>
+  </div>
+{% endblock %}
