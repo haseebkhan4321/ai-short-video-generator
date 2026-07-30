@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 
@@ -79,6 +81,27 @@ class Video(models.Model):
     total_cost_usd = models.DecimalField(
         max_digits=10, decimal_places=4, default=0
     )
+
+    # Up-front approval: a ceiling authorized once for the whole pipeline, so paid
+    # steps start without stopping for a click each. Null means no up-front approval
+    # and every paid step waits for a human, which is the default.
+    budget_approved_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Total spend authorized up front for this video. Null = per-step "
+        "approval only.",
+    )
+    budget_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_video_budgets",
+    )
+    budget_approved_at = models.DateTimeField(null=True, blank=True)
+
     error_message = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -89,6 +112,17 @@ class Video(models.Model):
 
     def __str__(self):
         return self.title or f"Video #{self.pk} ({self.premise[:40]})"
+
+    @property
+    def has_budget_approval(self):
+        return self.budget_approved_usd is not None
+
+    @property
+    def budget_remaining_usd(self):
+        """Headroom left under the up-front approval, or None if there isn't one."""
+        if self.budget_approved_usd is None:
+            return None
+        return Decimal(self.budget_approved_usd) - Decimal(self.total_cost_usd)
 
 
 class Chapter(models.Model):

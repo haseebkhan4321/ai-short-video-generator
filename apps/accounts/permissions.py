@@ -25,6 +25,7 @@ class Perm:
     # Pipeline steps
     STEP_RUN_FREE = "step.run_free"
     STEP_APPROVE_PAID = "step.approve_paid"
+    STEP_APPROVE_BUDGET = "step.approve_budget"
     STEP_OVERRIDE_BUDGET = "step.override_budget"
     STEP_REJECT = "step.reject"
     STEP_REGENERATE = "step.regenerate"
@@ -53,6 +54,9 @@ PERMISSIONS = [
      "Run steps that cost nothing: splitting, narration, merging and rendering."),
     (Perm.STEP_APPROVE_PAID, "Pipeline", "Approve paid steps",
      "Authorize steps that spend real money on OpenAI (script and images)."),
+    (Perm.STEP_APPROVE_BUDGET, "Pipeline", "Approve a whole video's budget up front",
+     "Authorize a video's projected spend in one go, so its paid steps run without "
+     "stopping for approval each. Stronger than approving one step at a time."),
     (Perm.STEP_OVERRIDE_BUDGET, "Pipeline", "Override the budget cap",
      "Approve spend that would push a video past MAX_COST_PER_VIDEO."),
     (Perm.STEP_REJECT, "Pipeline", "Reject steps",

@@ -19,6 +19,20 @@ def usd_to_pkr(usd):
     )
 
 
+def pkr_to_usd(pkr):
+    """The other direction, for amounts a person typed in.
+
+    Budgets are entered in PKR because that is what the UI shows, but every stored
+    cost is USD, so the conversion has to happen at the edge rather than leaving two
+    currencies in the database.
+    """
+    if pkr in (None, ""):
+        pkr = 0
+    return (Decimal(str(pkr)) / rate()).quantize(
+        Decimal("0.0001"), rounding=ROUND_HALF_UP
+    )
+
+
 def format_usd_as_pkr(usd):
     """e.g. 0.55 USD -> 'Rs 154.00' (at rate 280)."""
     return "Rs " + f"{usd_to_pkr(usd):,.2f}"

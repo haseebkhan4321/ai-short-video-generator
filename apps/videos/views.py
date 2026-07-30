@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib import messages
@@ -12,9 +12,10 @@ from apps.accounts.permissions import LABELS as PERM_LABELS
 
 from .forms import VideoCreateForm
 from .models import StepStatus, StepType, VideoStatus
-from .services.currency import format_usd_as_pkr
+from .services.currency import format_usd_as_pkr, pkr_to_usd
 from .services.pipeline import (
     BudgetExceededError,
+    PipelineError,
     PipelineService,
     QueueUnavailableError,
     StepNotActionableError,
@@ -320,6 +321,9 @@ def video_detail(request, video_id):
             "actions": actions,
             "next_step": next_step,
             "budget_cap": PipelineService.budget_cap(),
+            "projection": PipelineService.project_cost(video),
+            "budget_headroom": PipelineService.budget_headroom(video),
+            "budget_committed": PipelineService.budget_committed(video),
             "has_active": has_active,
             "initial_signature": signature,
             "stages": _compute_stages(video, list(chapters), steps),
@@ -468,6 +472,65 @@ def step_batch_approve(request, video_id):
     except StepTypeNotImplemented as exc:
         messages.error(request, str(exc))
     return redirect(reverse("videos:detail", args=[video_id]))
+
+
+@requires_perm(Perm.STEP_APPROVE_BUDGET)
+def budget_approve(request, video_id):
+    """Authorize a whole video's projected spend at once, then start what fits.
+
+    Its own permission rather than reusing ``step.approve_paid``: approving one step
+    whose cost is on screen and pre-authorizing everything are different levels of
+    trust, the same way overriding the cap is.
+    """
+    if request.method != "POST":
+        return redirect(reverse("videos:detail", args=[video_id]))
+    video = _get_video_or_404(request, video_id)
+
+    projection = PipelineService.project_cost(video)
+    amount = _submitted_amount(request) or projection["total_usd"]
+    try:
+        released = PipelineService.approve_budget(
+            video, amount, actor=request.user, force=_allowed_force(request)
+        )
+        messages.success(
+            request,
+            f"Authorized {format_usd_as_pkr(amount)} for this video"
+            + (f" — started {len(released)} step(s)." if released
+               else " — nothing was waiting to start."),
+        )
+    except BudgetExceededError as exc:
+        messages.warning(request, _budget_hint(request, exc, "Approve anyway"))
+    except QueueUnavailableError as exc:
+        messages.error(request, f"{exc} The steps stay approved and will start once it is.")
+    except PipelineError as exc:
+        messages.error(request, str(exc))
+    return redirect(reverse("videos:detail", args=[video_id]))
+
+
+@requires_perm(Perm.STEP_APPROVE_BUDGET)
+def budget_revoke(request, video_id):
+    """Withdraw the up-front approval. Anything already queued stays queued."""
+    if request.method != "POST":
+        return redirect(reverse("videos:detail", args=[video_id]))
+    video = _get_video_or_404(request, video_id)
+    PipelineService.revoke_budget(video)
+    messages.success(
+        request,
+        "Up-front approval withdrawn. Steps that have not started will wait for "
+        "approval again; anything already queued keeps running.",
+    )
+    return redirect(reverse("videos:detail", args=[video_id]))
+
+
+def _submitted_amount(request):
+    """A PKR amount typed into the form, converted to USD. None when left blank."""
+    raw = (request.POST.get("amount_pkr") or "").strip().replace(",", "")
+    if not raw:
+        return None
+    try:
+        return pkr_to_usd(Decimal(raw))
+    except (InvalidOperation, ValueError):
+        return None
 
 
 @requires_perm(Perm.VIDEO_DELETE)

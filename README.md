@@ -108,9 +108,9 @@ docs/              Plan, RBAC model, seeders, brief
 .venv\Scripts\python manage.py test
 ```
 
-208 tests covering permission resolution, account isolation, the two spend gates, the
-account-request flow, the seeders, the development sign-in guards, subtitles, and the
-task queue. Plain `django.test.TestCase` — no extra dependency.
+246 tests covering permission resolution, account isolation, the two spend gates, the
+account-request flow, the seeders, the development sign-in guards, subtitles, the
+task queue, and up-front budget approval. Plain `django.test.TestCase` — no extra dependency.
 
 ## Build status
 
@@ -132,6 +132,6 @@ media. See [`docs/rbac.md`](docs/rbac.md).
 Phase 2 progress:
 
 - [x] Celery + Redis: approved steps run in a worker ([`docs/queue.md`](docs/queue.md))
-- [ ] Up-front budget approval for a whole video
+- [x] Up-front budget approval for a whole video ([`docs/budget.md`](docs/budget.md))
 - [ ] Thumbnail generation
 - [ ] YouTube Data API upload with OAuth

@@ -192,6 +192,122 @@ class PipelineService:
         if not force and projected > cap:
             raise BudgetExceededError(projected, cap)
 
+    # ---- Up-front budget approval ----
+
+    @staticmethod
+    def project_cost(video):
+        """What the whole pipeline is expected to cost, with a breakdown."""
+        return CostEstimator.estimate_video(video.target_minutes)
+
+    @staticmethod
+    def budget_committed(video):
+        """Money spent, plus the estimates of steps already authorized but unfinished.
+
+        Spend alone is the wrong number to budget against: approving twelve image steps
+        commits their cost the moment they are queued, but ``total_cost_usd`` stays put
+        until they finish. Budgeting on spend would authorize the same headroom twelve
+        times over.
+        """
+        from django.db.models import Sum
+
+        in_flight = StepRepository.for_video(video.pk).filter(
+            status__in=[StepStatus.APPROVED, StepStatus.RUNNING]
+        ).aggregate(total=Sum("estimated_cost_usd"))["total"] or Decimal("0")
+        return Decimal(video.total_cost_usd) + Decimal(in_flight)
+
+    @staticmethod
+    def budget_headroom(video):
+        """How much of the up-front approval is still uncommitted, or None if there
+        is no up-front approval."""
+        if video.budget_approved_usd is None:
+            return None
+        return Decimal(video.budget_approved_usd) - PipelineService.budget_committed(
+            video
+        )
+
+    @staticmethod
+    def approve_budget(video, amount, actor, force=False):
+        """Authorize ``amount`` for the whole video, then start what fits.
+
+        The per-video cap still applies: pre-authorizing past
+        ``MAX_COST_PER_VIDEO`` needs ``step.override_budget``, exactly as approving a
+        single step past it does.
+        """
+        amount = Decimal(amount)
+        if amount <= 0:
+            raise PipelineError("The approved amount has to be more than zero.")
+        cap = PipelineService.budget_cap()
+        if not force and amount > cap:
+            raise BudgetExceededError(amount, cap)
+
+        VideoRepository.update(
+            video,
+            budget_approved_usd=amount,
+            budget_approved_by=actor,
+            budget_approved_at=timezone.now(),
+        )
+        return PipelineService.release_pending_steps(video, actor=actor)
+
+    @staticmethod
+    def revoke_budget(video):
+        """Withdraw the up-front approval.
+
+        Only affects what has not started yet. Work already queued stays queued —
+        a task cannot be unsent, and pretending otherwise would be worse than saying
+        so.
+        """
+        VideoRepository.update(
+            video,
+            budget_approved_usd=None,
+            budget_approved_by=None,
+            budget_approved_at=None,
+        )
+        return video
+
+    @staticmethod
+    def release_pending_steps(video, actor=None):
+        """Approve and queue every pending step that fits the remaining headroom.
+
+        Free steps cost nothing so they always fit: an up-front approval means "run
+        this video", and narration waits for a click only because it is slow, not
+        because it is expensive.
+
+        Paid steps are taken in creation order and the loop stops at the first one that
+        does not fit, rather than skipping it to fit a cheaper one later. Running parts
+        out of order to squeeze under a budget would be a surprising thing for it to
+        do on its own.
+        """
+        video = VideoRepository.get(video.pk)
+        headroom = PipelineService.budget_headroom(video)
+        if headroom is None:
+            return []
+
+        released = []
+        for step in StepRepository.for_video(video.pk).filter(
+            status=StepStatus.PENDING_APPROVAL
+        ).order_by("pk"):
+            if not has_executor(step.step_type):
+                continue
+            estimate = Decimal(step.estimated_cost_usd)
+            if estimate > headroom:
+                break
+            StepRepository.update(
+                step,
+                status=StepStatus.APPROVED,
+                approved_at=timezone.now(),
+                approved_by=actor,
+            )
+            headroom -= estimate
+            released.append(step.pk)
+
+        if released:
+            try:
+                PipelineService.enqueue(released)
+            except QueueUnavailableError:
+                # They stay approved, so resume_waiting_steps picks them up later.
+                pass
+        return released
+
     # ---- Approval / rejection ----
 
     @staticmethod
@@ -443,6 +559,12 @@ class PipelineService:
             # stage in batch. Merge waits until every part has both.
             PipelineService._create_image_steps(video)
             PipelineService._create_narration_steps(video)
+            # Both are created pending; if this video's spend was authorized up front,
+            # this is where they start without waiting for another click. A no-op when
+            # there is no up-front approval.
+            PipelineService.release_pending_steps(
+                video, actor=video.budget_approved_by
+            )
 
         elif step_type in (StepType.IMAGES, StepType.NARRATION):
             # Once a part has both its images and narration, render its preview

@@ -351,6 +351,69 @@
           </div>
           <div class="sm muted mt" style="margin-top:8px;">Cap {{ budget_cap|pkr }} per video</div>
 
+          {% if video.has_budget_approval %}
+            <div class="mt" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+              <div class="row" style="gap:8px;">
+                <span class="badge green">Pipeline approved</span>
+                <span class="sm muted">{{ video.budget_approved_usd|pkr }}</span>
+              </div>
+              <div class="sm muted mt" style="margin-top:8px;">
+                {{ budget_headroom|pkr }} still uncommitted.
+                Approved by {{ video.budget_approved_by.display_name|default:"—" }}
+                on {{ video.budget_approved_at|date:"j M, H:i" }}.
+              </div>
+              {% if can.step_approve_budget %}
+                <form method="post" action="{% url 'videos:budget_revoke' video.pk %}" class="mt"
+                      data-confirm="Withdraw the up-front approval? Steps that have not started will wait for approval again.">
+                  {% csrf_token %}
+                  <button type="submit" class="btn quiet sm">Withdraw approval</button>
+                </form>
+              {% endif %}
+            </div>
+          {% elif can.step_approve_budget and video.status != "completed" %}
+            {# Approve the whole pipeline once instead of clicking through every step. #}
+            <div class="mt" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+              <div class="kicker" style="margin-bottom:6px;">Approve the whole video</div>
+              <dl class="stat-list">
+                <div class="stat-row">
+                  <dt>Script</dt><dd>{{ projection.script_usd|pkr }}</dd>
+                </div>
+                <div class="stat-row">
+                  <dt>{{ projection.images }} images</dt>
+                  <dd>{{ projection.images_usd|pkr }}</dd>
+                </div>
+                <div class="stat-row">
+                  <dt>Narration, merge, render</dt><dd>Free</dd>
+                </div>
+                <div class="stat-row">
+                  <dt><b>Projected total</b></dt>
+                  <dd><b>{{ projection.total_usd|pkr }}</b></dd>
+                </div>
+              </dl>
+              <p class="sm muted mt" style="margin-top:10px;">
+                {{ projection.parts }} parts &times; {{ projection.images_per_part }} images
+                at {{ projection.per_image_usd|pkr }} each. An estimate — actual cost is
+                recorded per call.
+              </p>
+              <form method="post" action="{% url 'videos:budget_approve' video.pk %}" class="mt">
+                {% csrf_token %}
+                <div class="field">
+                  <label for="amount_pkr">Authorize <span class="muted">(optional)</span></label>
+                  <input type="text" id="amount_pkr" name="amount_pkr" inputmode="decimal"
+                         placeholder="{{ projection.total_usd|pkr_number }}">
+                  <div class="help">Rupees. Blank authorizes the projected total.</div>
+                </div>
+                <button type="submit" class="btn success block">
+                  Approve the pipeline<span class="tag">{{ projection.total_usd|pkr }}</span>
+                </button>
+              </form>
+              <p class="sm muted mt" style="margin-top:10px;">
+                Paid steps then run without stopping for approval, up to what you
+                authorize here.
+              </p>
+            </div>
+          {% endif %}
+
           <dl class="stat-list mt">
             <div class="stat-row"><dt>Target length</dt><dd>{{ video.target_minutes }} min</dd></div>
             <div class="stat-row"><dt>Actual length</dt><dd>{{ video.duration_seconds|duration }}</dd></div>

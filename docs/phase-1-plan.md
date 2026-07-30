@@ -366,5 +366,5 @@ Definition of done for Phase 1: from a premise + target minutes, a user approves
 
 ## Later phases (recorded for direction, not now)
 
-- **Phase 2**: thumbnail generation, YouTube Data API upload with OAuth, ~~Celery + Redis so long narration/render run in a real queue~~ (**done** — see [`queue.md`](queue.md)), full-pipeline budget approval up front.
+- **Phase 2**: thumbnail generation, YouTube Data API upload with OAuth, ~~Celery + Redis so long narration/render run in a real queue~~ (**done** — see [`queue.md`](queue.md)), ~~full-pipeline budget approval up front~~ (**done** — see [`budget.md`](budget.md)).
 - **Phase 3**: scheduling, multiple videos per profile, analytics, Docker Compose, object storage (S3/R2), cheaper/local image models (e.g. Flux), optional premium TTS or AI video clips, cross-posting.

@@ -2,7 +2,7 @@ from decimal import Decimal, InvalidOperation
 
 from django import template
 
-from apps.videos.services.currency import format_usd_as_pkr
+from apps.videos.services.currency import format_usd_as_pkr, usd_to_pkr
 
 register = template.Library()
 
@@ -11,6 +11,12 @@ register = template.Library()
 def pkr(value):
     """Format a USD amount as a PKR string, e.g. 0.55 -> 'Rs 154.00'."""
     return format_usd_as_pkr(value)
+
+
+@register.filter
+def pkr_number(value):
+    """The PKR amount with no 'Rs' prefix, for prefilling a numeric input."""
+    return f"{usd_to_pkr(value):.2f}"
 
 
 @register.filter

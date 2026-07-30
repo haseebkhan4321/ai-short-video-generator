@@ -4,6 +4,7 @@ Estimates are shown to the user BEFORE approval. Actual costs are recorded from
 provider responses after each call (see ApiCallLog). Prices are approximate USD
 and centralized here so they are easy to update.
 """
+import math
 from decimal import Decimal
 
 from django.conf import settings
@@ -64,6 +65,45 @@ class CostEstimator:
         model = model or settings.OPENAI_IMAGE_MODEL
         per_image = IMAGE_PRICING.get(model, IMAGE_PRICING_FALLBACK)
         return _q(per_image * Decimal(num_images))
+
+    @staticmethod
+    def expected_parts(target_minutes):
+        """How many parts the split step will produce for this target length.
+
+        Mirrors split_service: it fills each part up to
+        ``WORDS_PER_MINUTE * TARGET_MINUTES_PER_PART`` words, so the count follows from
+        the target minutes. Kept as its own function precisely so a projection cannot
+        drift from what the split actually does.
+        """
+        per_part = max(1, settings.TARGET_MINUTES_PER_PART)
+        return max(1, math.ceil(int(target_minutes) / per_part))
+
+    @staticmethod
+    def estimate_video(target_minutes, text_model=None, image_model=None):
+        """Projected cost of the whole pipeline, before any of it exists.
+
+        Used by the up-front approval, so a person can authorize a video's spend once
+        instead of clicking through every step. Narration, splitting, merging and
+        rendering are all local, so images dominate and the script is a rounding error.
+
+        Returns a breakdown rather than a single number: "Rs 780" invites a shrug, and
+        "48 images at Rs 11.20 each" invites a decision.
+        """
+        parts = CostEstimator.expected_parts(target_minutes)
+        images = parts * settings.IMAGES_PER_PART
+        script_cost = CostEstimator.estimate_script(target_minutes, text_model)
+        images_cost = CostEstimator.estimate_images(images, image_model)
+        return {
+            "parts": parts,
+            "images": images,
+            "images_per_part": settings.IMAGES_PER_PART,
+            "script_usd": script_cost,
+            "images_usd": images_cost,
+            "per_image_usd": IMAGE_PRICING.get(
+                image_model or settings.OPENAI_IMAGE_MODEL, IMAGE_PRICING_FALLBACK
+            ),
+            "total_usd": _q(script_cost + images_cost),
+        }
 
     @staticmethod
     def estimate_narration_chars(num_chars):
