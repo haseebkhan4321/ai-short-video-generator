@@ -1,15 +1,20 @@
-{% extends "base.html" %}
+{% extends "base_public.html" %}
 {% block title %}Request received{% endblock %}
+{% block public_width %}narrow{% endblock %}
+
 {% block content %}
-  <h1>Request received</h1>
-  <div class="card" style="max-width: 560px;">
-    <p>
-      Your request is waiting for a system administrator to review. Until it is
-      approved, signing in will not work.
+  <div class="auth-card">
+    <div class="auth-head">
+      <div class="ico-box" style="width:44px;height:44px;display:grid;place-items:center;margin:0 auto 16px;border-radius:12px;background:var(--green-soft);border:1px solid rgba(52,211,153,.34);color:#6ee7c0;">
+        <svg width="20" height="20" viewBox="0 0 16 16"><use href="#i-check"/></svg>
+      </div>
+      <h1>Request received</h1>
+      <p>It is waiting for a system administrator to review.</p>
+    </div>
+    <p class="sm dim">
+      Signing in will not work until it is approved. When it is, use the email and
+      password you just chose &mdash; there is nothing else to wait for.
     </p>
-    <p class="muted" style="margin-bottom:0;">
-      When it is approved, sign in with the email and password you just chose.
-    </p>
+    <a class="btn ghost block mt" href="{% url 'accounts:home' %}">Back to the home page</a>
   </div>
-  <a class="btn secondary" href="{% url 'accounts:home' %}">Back to the home page</a>
 {% endblock %}

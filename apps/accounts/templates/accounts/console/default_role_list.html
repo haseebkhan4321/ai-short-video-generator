@@ -1,36 +1,52 @@
 {% extends "base.html" %}
 {% block title %}Default roles{% endblock %}
-{% block content %}
-  {% include "accounts/console/_nav.html" %}
-  <h1>Default roles</h1>
-  <p class="muted">
-    These are the roles copied into each new account. Editing one changes what
-    future accounts start with &mdash; existing accounts keep the copy they already have.
-  </p>
+{% block page_title %}Default roles{% endblock %}
 
-  <div class="card">
-    <table>
-      <thead><tr><th>Role</th><th>Permissions</th><th></th></tr></thead>
-      <tbody>
-        {% for role in roles %}
-          <tr>
-            <td>
-              <strong>{{ role.name }}</strong>
-              {% if role.description %}
-                <div class="muted" style="font-size:12px;">{{ role.description }}</div>
-              {% endif %}
-            </td>
-            <td class="muted" style="font-size:12px;">
-              {{ role.permission_labels|join:", "|default:"No permissions" }}
-            </td>
-            <td><a href="{% url 'console:default_role_edit' role.pk %}">Edit</a></td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="3" class="muted">
-            None seeded. Run <code>python manage.py seed_production --roles-only</code>.
-          </td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+{% block content %}
+  {% include "accounts/console/_nav.html" with console_tab="roles" %}
+
+  <div class="panel accent">
+    <div class="panel-body tight row top">
+      <svg class="ico" width="16" height="16" viewBox="0 0 16 16" style="color:var(--accent);flex:0 0 auto;margin-top:2px"><use href="#i-info"/></svg>
+      <p class="sm dim" style="margin:0;">
+        These are cloned into each new account. Editing one changes what
+        <b>future</b> accounts start with &mdash; existing accounts keep the copy they
+        already have.
+      </p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Role</th><th>Permissions</th><th class="actions"></th></tr></thead>
+        <tbody>
+          {% for role in roles %}
+            <tr>
+              <td>
+                <div class="cell-main">{{ role.name }}</div>
+                {% if role.description %}<div class="cell-sub">{{ role.description }}</div>{% endif %}
+              </td>
+              <td class="dim sm" style="max-width:460px;">
+                {{ role.permission_labels|join:", "|default:"No permissions" }}
+              </td>
+              <td class="actions">
+                <a class="btn ghost sm" href="{% url 'console:default_role_edit' role.pk %}">Edit</a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="3">
+                <div class="empty">
+                  <div class="ico-box"><svg width="20" height="20" viewBox="0 0 16 16"><use href="#i-roles"/></svg></div>
+                  <h3>No defaults seeded</h3>
+                  <p>Run <code>python manage.py seed_production --roles-only</code>.</p>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 {% endblock %}

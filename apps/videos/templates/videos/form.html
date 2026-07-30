@@ -1,28 +1,41 @@
 {% extends "base.html" %}
 {% block title %}New video{% endblock %}
-{% block content %}
-  <p><a href="{% url 'videos:list' %}">&larr; Videos</a></p>
-  <h1>New video</h1>
 
-  <div class="card" style="max-width: 720px;">
-    <form method="post" novalidate>
-      {% csrf_token %}
-      {% for field in form %}
-        <div>
-          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-          {{ field }}
-          {% if field.help_text %}<div class="muted" style="font-size:13px;margin-top:4px;">{{ field.help_text }}</div>{% endif %}
-          {% for error in field.errors %}<div class="badge red" style="margin-top:6px;">{{ error }}</div>{% endfor %}
+{% block topbar %}
+  <div class="crumb">
+    <a href="{% url 'videos:list' %}">
+      <svg class="ico" width="13" height="13" viewBox="0 0 16 16" style="vertical-align:-2px"><use href="#i-back"/></svg>
+      Videos
+    </a>
+    <span class="sep">/</span>
+    <h1>New video</h1>
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div class="max-md">
+    <div class="panel">
+      <div class="panel-head"><h2>What should it be about?</h2></div>
+      <form method="post" novalidate>
+        <div class="panel-body">
+          {% csrf_token %}
+          {% include "_fields.html" %}
         </div>
-      {% endfor %}
-      <div style="margin-top: 20px;">
-        <button type="submit" class="btn">Create &amp; review script step</button>
-        <a class="btn secondary" href="{% url 'videos:list' %}">Cancel</a>
+        <div class="panel-foot">
+          <button type="submit" class="btn">Create video</button>
+          <a class="btn quiet" href="{% url 'videos:list' %}">Cancel</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel accent">
+      <div class="panel-body tight row top">
+        <svg class="ico" width="16" height="16" viewBox="0 0 16 16" style="color:var(--accent);flex:0 0 auto;margin-top:2px"><use href="#i-info"/></svg>
+        <p class="sm dim" style="margin:0;">
+          Creating a video only queues the first step for approval. Nothing reaches a
+          paid API until someone approves it, and the estimate is shown before you do.
+        </p>
       </div>
-      <p class="muted" style="margin-top:14px;font-size:13px;">
-        Creating a video only queues the first step for approval. No paid API call
-        happens until you approve it.
-      </p>
-    </form>
+    </div>
   </div>
 {% endblock %}

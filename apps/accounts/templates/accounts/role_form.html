@@ -1,24 +1,35 @@
 {% extends "base.html" %}
 {% block title %}{{ title }}{% endblock %}
-{% block content %}
-  <p><a href="{% url 'accounts:role_list' %}">&larr; Roles</a></p>
-  <h1>{{ title }}</h1>
 
-  <div class="card">
+{% block topbar %}
+  <div class="crumb">
+    <a href="{% url 'accounts:role_list' %}">
+      <svg class="ico" width="13" height="13" viewBox="0 0 16 16" style="vertical-align:-2px"><use href="#i-back"/></svg>
+      Roles
+    </a>
+    <span class="sep">/</span>
+    <h1>{{ title }}</h1>
+  </div>
+{% endblock %}
+
+{% block topbar_actions %}
+  {% if role %}
+    <a class="btn danger sm" href="{% url 'accounts:role_delete' role.pk %}">Delete</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <div class="panel">
     <form method="post" novalidate>
-      {% csrf_token %}
-      {% include "accounts/_role_fields.html" %}
-      <div style="margin-top:22px;">
-        <button type="submit" class="btn">Save</button>
-        <a class="btn secondary" href="{% url 'accounts:role_list' %}">Cancel</a>
-        {% if role %}
-          <a class="btn red" style="float:right;" href="{% url 'accounts:role_delete' role.pk %}">Delete</a>
-        {% endif %}
+      <div class="panel-body">
+        {% csrf_token %}
+        {% include "accounts/_role_fields.html" %}
+      </div>
+      <div class="panel-foot">
+        <button type="submit" class="btn">Save role</button>
+        <a class="btn quiet" href="{% url 'accounts:role_list' %}">Cancel</a>
+        <span class="sm muted right">Only permissions you hold yourself are listed.</span>
       </div>
     </form>
   </div>
-
-  <p class="muted" style="font-size:13px;">
-    Only permissions you hold yourself are listed &mdash; you cannot grant more than you have.
-  </p>
 {% endblock %}

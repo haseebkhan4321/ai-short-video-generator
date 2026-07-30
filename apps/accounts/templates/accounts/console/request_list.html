@@ -1,57 +1,84 @@
 {% extends "base.html" %}
 {% block title %}Account requests{% endblock %}
+{% block page_title %}Account requests{% endblock %}
+
 {% block content %}
-  {% include "accounts/console/_nav.html" %}
-  <h1>Account requests</h1>
+  {% include "accounts/console/_nav.html" with console_tab="requests" %}
 
   {% for r in requests %}
-    <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:flex-start; gap:16px;">
-        <div style="flex:1; min-width:240px;">
-          <strong>{{ r.email }}</strong>
-          {% if r.status == "pending" %}<span class="badge amber">Pending</span>
-          {% elif r.status == "approved" %}<span class="badge green">Approved</span>
-          {% else %}<span class="badge red">Rejected</span>{% endif %}
-          <div class="muted" style="font-size:13px; margin-top:4px;">
-            {{ r.full_name|default:"(no name given)" }} &nbsp;·&nbsp;
-            wants the account <strong>{{ r.account_name }}</strong> &nbsp;·&nbsp;
-            {{ r.created_at|date:"j M Y, H:i" }}
+    <div class="panel {% if r.is_pending %}warn{% endif %}">
+      <div class="panel-head">
+        <span class="avatar">{{ r.email|slice:":2"|upper }}</span>
+        <div class="grow" style="min-width:0;">
+          <div class="cell-main">{{ r.full_name|default:"(no name given)" }}</div>
+          <div class="cell-sub">{{ r.email }}</div>
+        </div>
+        {% if r.status == "pending" %}<span class="badge amber">Pending</span>
+        {% elif r.status == "approved" %}<span class="badge green">Approved</span>
+        {% else %}<span class="badge red">Rejected</span>{% endif %}
+      </div>
+
+      <div class="panel-body">
+        <div class="split" style="gap:20px;">
+          <div>
+            <dl class="stat-list">
+              <div class="stat-row"><dt>Wants the account</dt><dd>{{ r.account_name }}</dd></div>
+              <div class="stat-row"><dt>Submitted</dt><dd>{{ r.created_at|date:"j M Y, H:i" }}</dd></div>
+              {% if r.reviewed_by %}
+                <div class="stat-row">
+                  <dt>Reviewed</dt>
+                  <dd>{{ r.reviewed_by.display_name }} · {{ r.reviewed_at|date:"j M Y, H:i" }}</dd>
+                </div>
+              {% endif %}
+              {% if r.account %}
+                <div class="stat-row">
+                  <dt>Account created</dt>
+                  <dd>{{ r.account.name }} <code>{{ r.account.slug }}</code></dd>
+                </div>
+              {% endif %}
+            </dl>
+            {% if r.message %}
+              <div class="mt">
+                <div class="kicker" style="margin-bottom:6px;">Their message</div>
+                <p class="dim sm" style="margin:0;">{{ r.message }}</p>
+              </div>
+            {% endif %}
+            {% if r.decision_note %}
+              <div class="mt">
+                <div class="kicker" style="margin-bottom:6px;">Decision note</div>
+                <p class="dim sm" style="margin:0;">{{ r.decision_note }}</p>
+              </div>
+            {% endif %}
           </div>
-          {% if r.message %}
-            <div style="margin-top:10px;"><div class="muted" style="font-size:12px;">Their message</div>{{ r.message }}</div>
-          {% endif %}
-          {% if r.reviewed_by %}
-            <div class="muted" style="font-size:12px; margin-top:10px;">
-              Reviewed by {{ r.reviewed_by.display_name }} on {{ r.reviewed_at|date:"j M Y, H:i" }}
-              {% if r.decision_note %}&nbsp;·&nbsp; &ldquo;{{ r.decision_note }}&rdquo;{% endif %}
-            </div>
-          {% endif %}
-          {% if r.account %}
-            <div class="muted" style="font-size:12px; margin-top:6px;">
-              Account created: {{ r.account.name }} ({{ r.account.slug }})
-            </div>
+
+          {% if r.is_pending %}
+            <form method="post" action="{% url 'console:request_review' r.pk %}">
+              {% csrf_token %}
+              <div class="field">
+                <label for="note-{{ r.pk }}">Note <span class="muted">(optional)</span></label>
+                <input type="text" id="note-{{ r.pk }}" name="note" maxlength="300"
+                       placeholder="Shown on the request afterwards">
+              </div>
+              <div class="btn-row">
+                <button type="submit" name="decision" value="approve" class="btn success">Approve</button>
+                <button type="submit" name="decision" value="reject" class="btn danger">Reject</button>
+              </div>
+              <p class="help">
+                Approving activates their sign-in and creates the account with the
+                default roles cloned in. Rejecting deletes the pending user.
+              </p>
+            </form>
           {% endif %}
         </div>
-
-        {% if r.is_pending %}
-          <form method="post" action="{% url 'console:request_review' r.pk %}"
-                style="flex:0 0 260px;">
-            {% csrf_token %}
-            <label for="note-{{ r.pk }}">Note (optional)</label>
-            <input type="text" id="note-{{ r.pk }}" name="note" maxlength="300">
-            <div style="margin-top:10px; display:flex; gap:8px;">
-              <button type="submit" name="decision" value="approve" class="btn green">Approve</button>
-              <button type="submit" name="decision" value="reject" class="btn red">Reject</button>
-            </div>
-            <div class="muted" style="font-size:12px; margin-top:8px;">
-              Approving activates their sign-in and creates the account with the
-              default roles. Rejecting deletes the pending user.
-            </div>
-          </form>
-        {% endif %}
       </div>
     </div>
   {% empty %}
-    <div class="card"><p class="muted" style="margin:0;">No requests yet.</p></div>
+    <div class="panel">
+      <div class="empty">
+        <div class="ico-box"><svg width="20" height="20" viewBox="0 0 16 16"><use href="#i-inbox"/></svg></div>
+        <h3>No requests yet</h3>
+        <p>Requests submitted from the public home page appear here for review.</p>
+      </div>
+    </div>
   {% endfor %}
 {% endblock %}

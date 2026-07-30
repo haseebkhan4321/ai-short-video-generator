@@ -1,41 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Roles{% endblock %}
+{% block page_title %}Roles{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn sm" href="{% url 'accounts:role_create' %}">
+    <svg class="ico" viewBox="0 0 16 16"><use href="#i-plus"/></svg> New role
+  </a>
+{% endblock %}
+
 {% block content %}
-  <div class="row" style="justify-content: space-between; align-items: center;">
-    <h1>Roles in {{ account.name }}</h1>
-    <a class="btn" href="{% url 'accounts:role_create' %}">+ New role</a>
+  <div class="panel">
+    <div class="panel-head">
+      <h2>{{ account.name }}</h2>
+      <span class="badge plain">{{ roles|length }} role{{ roles|length|pluralize }}</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Role</th><th>Permissions</th><th class="num">Users</th><th class="actions"></th></tr>
+        </thead>
+        <tbody>
+          {% for role in roles %}
+            <tr>
+              <td>
+                <div class="cell-main">{{ role.name }}</div>
+                {% if role.description %}<div class="cell-sub">{{ role.description }}</div>{% endif %}
+              </td>
+              <td class="dim sm" style="max-width:420px;">
+                {{ role.permission_labels|join:", "|default:"No permissions" }}
+              </td>
+              <td class="num">{{ role.memberships.count }}</td>
+              <td class="actions">
+                <div class="btn-row">
+                  <a class="btn quiet sm" href="{% url 'accounts:role_edit' role.pk %}">Edit</a>
+                  <a class="btn danger sm" href="{% url 'accounts:role_delete' role.pk %}">Delete</a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <div class="card">
-    <table>
-      <thead><tr><th>Role</th><th>Permissions</th><th>Users</th><th></th></tr></thead>
-      <tbody>
-        {% for role in roles %}
-          <tr>
-            <td>
-              <strong>{{ role.name }}</strong>
-              {% if role.description %}
-                <div class="muted" style="font-size:12px;">{{ role.description }}</div>
-              {% endif %}
-            </td>
-            <td class="muted" style="font-size:12px;">
-              {{ role.permission_labels|join:", "|default:"No permissions" }}
-            </td>
-            <td>{{ role.memberships.count }}</td>
-            <td>
-              <a href="{% url 'accounts:role_edit' role.pk %}">Edit</a>
-              &nbsp;·&nbsp;
-              <a href="{% url 'accounts:role_delete' role.pk %}" style="color:var(--red);">Delete</a>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="panel accent">
+    <div class="panel-body tight row top">
+      <svg class="ico" width="16" height="16" viewBox="0 0 16 16" style="color:var(--accent);flex:0 0 auto;margin-top:2px"><use href="#i-money"/></svg>
+      <p class="sm dim" style="margin:0;">
+        <b>Approve paid steps</b> authorizes real spend on OpenAI.
+        <b>Override the budget cap</b> is separate, so a role can produce without being
+        able to exceed <code>MAX_COST_PER_VIDEO</code>.
+      </p>
+    </div>
   </div>
-
-  <p class="muted" style="font-size:13px;">
-    <strong>Approve paid steps</strong> authorizes real spend on OpenAI.
-    <strong>Override the budget cap</strong> is separate, so a role can be allowed to
-    produce without being allowed to exceed <code>MAX_COST_PER_VIDEO</code>.
-  </p>
 {% endblock %}

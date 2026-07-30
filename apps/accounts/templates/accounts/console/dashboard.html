@@ -1,42 +1,62 @@
 {% extends "base.html" %}
-{% block title %}Console{% endblock %}
-{% block content %}
-  {% include "accounts/console/_nav.html" %}
-  <h1>System console</h1>
+{% block title %}System console{% endblock %}
+{% block page_title %}System console{% endblock %}
 
-  <div class="card">
-    <div class="row" style="gap:40px;">
-      <div>
-        <div class="muted">Pending requests</div>
-        <strong style="font-size:22px;{% if pending_count %} color:var(--amber);{% endif %}">{{ pending_count }}</strong>
-      </div>
-      <div><div class="muted">Users</div><strong style="font-size:22px;">{{ user_count }}</strong></div>
-      <div><div class="muted">Accounts</div><strong style="font-size:22px;">{{ account_count }}</strong></div>
+{% block content %}
+  {% include "accounts/console/_nav.html" with console_tab="dashboard" %}
+
+  <div class="stats mb">
+    <div class="stat">
+      <div class="stat-label">Pending requests</div>
+      <div class="stat-value" {% if pending_count %}style="color:#fcd34d;"{% endif %}>{{ pending_count }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Users</div>
+      <div class="stat-value">{{ user_count }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Accounts</div>
+      <div class="stat-value">{{ account_count }}</div>
     </div>
   </div>
 
-  {% if pending_requests %}
-    <h2>Waiting for review</h2>
-    <div class="card">
-      <table>
-        <thead><tr><th>Email</th><th>Requested account</th><th>When</th><th></th></tr></thead>
-        <tbody>
-          {% for r in pending_requests %}
-            <tr>
-              <td>{{ r.email }}<div class="muted" style="font-size:12px;">{{ r.full_name }}</div></td>
-              <td>{{ r.account_name }}</td>
-              <td class="muted">{{ r.created_at|date:"j M Y, H:i" }}</td>
-              <td><a href="{% url 'console:requests' %}">Review</a></td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <div class="panel">
+    <div class="panel-head">
+      <svg class="ico" width="15" height="15" viewBox="0 0 16 16" style="color:var(--text-3)"><use href="#i-inbox"/></svg>
+      <h2>Waiting for review</h2>
+      {% if pending_requests %}
+        <div class="right"><a class="btn ghost sm" href="{% url 'console:requests' %}">Review all</a></div>
+      {% endif %}
     </div>
-  {% else %}
-    <div class="card"><p class="muted" style="margin:0;">No requests waiting.</p></div>
-  {% endif %}
-
-  <p class="muted" style="font-size:13px;">
-    Django's raw admin is still available at <a href="/admin/">/admin/</a>.
-  </p>
+    {% if pending_requests %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Requester</th><th>Wants the account</th><th>Submitted</th><th class="actions"></th></tr>
+          </thead>
+          <tbody>
+            {% for r in pending_requests %}
+              <tr>
+                <td>
+                  <div class="cell-main">{{ r.full_name|default:"(no name given)" }}</div>
+                  <div class="cell-sub">{{ r.email }}</div>
+                </td>
+                <td>{{ r.account_name }}</td>
+                <td class="dim">{{ r.created_at|date:"j M Y, H:i" }}</td>
+                <td class="actions">
+                  <a class="btn ghost sm" href="{% url 'console:requests' %}">Review</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        <div class="ico-box"><svg width="20" height="20" viewBox="0 0 16 16"><use href="#i-check"/></svg></div>
+        <h3>Nothing waiting</h3>
+        <p>Every account request has been reviewed.</p>
+      </div>
+    {% endif %}
+  </div>
 {% endblock %}

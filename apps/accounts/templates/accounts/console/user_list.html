@@ -1,34 +1,50 @@
 {% extends "base.html" %}
 {% block title %}All users{% endblock %}
-{% block content %}
-  {% include "accounts/console/_nav.html" %}
-  <h1>All users</h1>
+{% block page_title %}All users{% endblock %}
 
-  <div class="card">
-    <table>
-      <thead><tr><th>User</th><th>Status</th><th>Accounts</th><th></th></tr></thead>
-      <tbody>
-        {% for u in users %}
-          <tr>
-            <td>
-              {{ u.display_name }}
-              <div class="muted" style="font-size:12px;">{{ u.email }}</div>
-            </td>
-            <td>
-              {% if u.is_active %}<span class="badge green">Active</span>
-              {% else %}<span class="badge red">Inactive</span>{% endif %}
-              {% if u.is_system_admin %}<span class="badge accent">System admin</span>{% endif %}
-              {% if u.must_change_password %}<span class="badge amber">Must change password</span>{% endif %}
-            </td>
-            <td class="muted" style="font-size:12px;">
-              {% for m in u.memberships.all %}
-                {{ m.account.name }} ({{ m.role.name }}){% if not forloop.last %}, {% endif %}
-              {% empty %}—{% endfor %}
-            </td>
-            <td><a href="{% url 'console:user_detail' u.pk %}">Manage</a></td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+{% block content %}
+  {% include "accounts/console/_nav.html" with console_tab="users" %}
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Every user</h2>
+      <span class="badge plain">{{ users|length }}</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>User</th><th>Status</th><th>Accounts</th><th class="actions"></th></tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+            <tr>
+              <td>
+                <div class="row" style="gap:10px;">
+                  <span class="avatar">{{ u.display_name|slice:":2"|upper }}</span>
+                  <div style="min-width:0;">
+                    <div class="cell-main">{{ u.display_name }}</div>
+                    <div class="cell-sub">{{ u.email }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                {% if u.is_active %}<span class="badge green">Active</span>
+                {% else %}<span class="badge red">Inactive</span>{% endif %}
+                {% if u.is_system_admin %}<span class="badge accent">System admin</span>{% endif %}
+                {% if u.must_change_password %}<span class="badge amber">Must change password</span>{% endif %}
+              </td>
+              <td class="dim sm">
+                {% for m in u.memberships.all %}
+                  {{ m.account.name }} <span class="muted">({{ m.role.name }})</span>{% if not forloop.last %},<br>{% endif %}
+                {% empty %}<span class="muted">—</span>{% endfor %}
+              </td>
+              <td class="actions">
+                <a class="btn ghost sm" href="{% url 'console:user_detail' u.pk %}">Manage</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 {% endblock %}

@@ -1,19 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Delete {{ role.name }}{% endblock %}
+{% block page_title %}Delete role{% endblock %}
+
 {% block content %}
-  <h1>Delete role</h1>
-  <div class="card" style="max-width: 560px;">
-    <p>Delete the role <strong>{{ role.name }}</strong> from {{ account.name }}?</p>
-    {% if role.memberships.count %}
-      <div class="badge red">
-        {{ role.memberships.count }} user(s) still hold this role. Move them to another
-        role first.
+  <div class="max-sm">
+    <div class="panel danger">
+      <div class="panel-body">
+        <div class="row top">
+          <svg class="ico" width="18" height="18" viewBox="0 0 16 16" style="color:var(--red);flex:0 0 auto;margin-top:2px"><use href="#i-alert"/></svg>
+          <div class="grow">
+            <h2>{{ role.name }}</h2>
+            <p class="dim sm" style="margin:6px 0 0;">Remove this role from {{ account.name }}?</p>
+          </div>
+        </div>
+        {% if role.memberships.count %}
+          <div class="error mt">
+            <svg class="ico" width="14" height="14" viewBox="0 0 16 16" style="flex:0 0 auto;margin-top:1px"><use href="#i-alert"/></svg>
+            <span>
+              {{ role.memberships.count }} user{{ role.memberships.count|pluralize }} still
+              hold{{ role.memberships.count|pluralize:"s," }} this role. Move them to
+              another role first.
+            </span>
+          </div>
+        {% endif %}
       </div>
-    {% endif %}
-    <form method="post" style="margin-top:14px;">
-      {% csrf_token %}
-      <button type="submit" class="btn red">Delete</button>
-      <a class="btn secondary" href="{% url 'accounts:role_list' %}">Cancel</a>
-    </form>
+      <div class="panel-foot">
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn danger">Delete</button>
+        </form>
+        <a class="btn quiet" href="{% url 'accounts:role_list' %}">Cancel</a>
+      </div>
+    </div>
   </div>
 {% endblock %}

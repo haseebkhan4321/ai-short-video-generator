@@ -1,50 +1,66 @@
 {% extends "base.html" %}
 {% block title %}Users{% endblock %}
+{% block page_title %}Users{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn sm" href="{% url 'accounts:user_create' %}">
+    <svg class="ico" viewBox="0 0 16 16"><use href="#i-plus"/></svg> Add a user
+  </a>
+{% endblock %}
+
 {% block content %}
-  <div class="row" style="justify-content: space-between; align-items: center;">
-    <h1>Users in {{ account.name }}</h1>
-    <a class="btn" href="{% url 'accounts:user_create' %}">+ Add a user</a>
+  <div class="panel">
+    <div class="panel-head">
+      <h2>{{ account.name }}</h2>
+      <span class="badge plain">{{ memberships|length }} member{{ memberships|length|pluralize }}</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>User</th><th>Role</th><th>Status</th><th>Added by</th><th class="actions"></th></tr>
+        </thead>
+        <tbody>
+          {% for m in memberships %}
+            <tr>
+              <td>
+                <div class="row" style="gap:10px;">
+                  <span class="avatar">{{ m.user.display_name|slice:":2"|upper }}</span>
+                  <div style="min-width:0;">
+                    <div class="cell-main">{{ m.user.display_name }}</div>
+                    <div class="cell-sub">{{ m.user.email }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>{{ m.role.name }}</td>
+              <td>
+                {% if not m.user.is_active %}
+                  <span class="badge red">User deactivated</span>
+                {% elif m.is_active %}
+                  <span class="badge green">Active</span>
+                {% else %}
+                  <span class="badge">Inactive here</span>
+                {% endif %}
+                {% if m.is_owner %}<span class="badge accent">Owner</span>{% endif %}
+              </td>
+              <td class="dim">{{ m.invited_by.display_name|default:"—" }}</td>
+              <td class="actions">
+                <div class="btn-row">
+                  <a class="btn quiet sm" href="{% url 'accounts:user_edit' m.pk %}">Edit</a>
+                  {% if not m.is_owner %}
+                    <a class="btn danger sm" href="{% url 'accounts:user_remove' m.pk %}">Remove</a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-foot">
+      <p class="sm muted" style="margin:0;">
+        Removing someone deletes their membership here, not their user account &mdash;
+        they may belong to other accounts.
+      </p>
+    </div>
   </div>
-
-  <div class="card">
-    <table>
-      <thead>
-        <tr><th>User</th><th>Role</th><th>Status</th><th>Added by</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for m in memberships %}
-          <tr>
-            <td>
-              {{ m.user.display_name }}
-              <div class="muted" style="font-size:12px;">{{ m.user.email }}</div>
-            </td>
-            <td>{{ m.role.name }}</td>
-            <td>
-              {% if not m.user.is_active %}
-                <span class="badge red">User deactivated</span>
-              {% elif m.is_active %}
-                <span class="badge green">Active</span>
-              {% else %}
-                <span class="badge">Inactive here</span>
-              {% endif %}
-              {% if m.is_owner %}<span class="badge accent">Owner</span>{% endif %}
-            </td>
-            <td class="muted">{{ m.invited_by.display_name|default:"—" }}</td>
-            <td>
-              <a href="{% url 'accounts:user_edit' m.pk %}">Edit</a>
-              {% if not m.is_owner %}
-                &nbsp;·&nbsp;
-                <a href="{% url 'accounts:user_remove' m.pk %}" style="color:var(--red);">Remove</a>
-              {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <p class="muted" style="font-size:13px;">
-    Removing someone deletes their membership here, not their user account &mdash; they
-    may belong to other accounts.
-  </p>
 {% endblock %}

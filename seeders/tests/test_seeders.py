@@ -374,7 +374,9 @@ class SeededMediaTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls._tmp = tempfile.TemporaryDirectory()
+        # ignore_cleanup_errors so a stray Windows file lock cannot fail teardown and
+        # cascade into every test that runs after this class.
+        cls._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         cls._override = override_settings(MEDIA_ROOT=Path(cls._tmp.name))
         cls._override.enable()
 

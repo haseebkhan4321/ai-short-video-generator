@@ -1,14 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Delete {{ template.name }}{% endblock %}
+{% block page_title %}Delete template{% endblock %}
+
 {% block content %}
-  <h1>Delete template</h1>
-  <div class="card" style="max-width: 640px;">
-    <p>Delete <strong>{{ template.name }}</strong>? This also deletes its
-      {{ template.videos.count }} video(s) and all their generated data. This cannot be undone.</p>
-    <form method="post">
-      {% csrf_token %}
-      <button type="submit" class="btn red">Delete permanently</button>
-      <a class="btn secondary" href="{% url 'templates:detail' template.pk %}">Cancel</a>
-    </form>
+  <div class="max-sm">
+    <div class="panel danger">
+      <div class="panel-body">
+        <div class="row top">
+          <svg class="ico" width="18" height="18" viewBox="0 0 16 16" style="color:var(--red);flex:0 0 auto;margin-top:2px"><use href="#i-alert"/></svg>
+          <div class="grow">
+            <h2>{{ template.name }}</h2>
+            <p class="dim sm" style="margin:6px 0 0;">
+              This also deletes its {{ template.videos.count }} video{{ template.videos.count|pluralize }}
+              and everything generated from them. It cannot be undone.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-foot">
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn danger">Delete permanently</button>
+        </form>
+        <a class="btn quiet" href="{% url 'templates:detail' template.pk %}">Cancel</a>
+      </div>
+    </div>
   </div>
 {% endblock %}

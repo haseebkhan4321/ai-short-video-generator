@@ -1,72 +1,118 @@
 {% extends "base.html" %}
 {% block title %}{{ user_obj.email }}{% endblock %}
+
+{% block topbar %}
+  <div class="crumb">
+    <a href="{% url 'console:users' %}">
+      <svg class="ico" width="13" height="13" viewBox="0 0 16 16" style="vertical-align:-2px"><use href="#i-back"/></svg>
+      All users
+    </a>
+    <span class="sep">/</span>
+    <h1>{{ user_obj.display_name }}</h1>
+  </div>
+{% endblock %}
+
 {% block content %}
-  {% include "accounts/console/_nav.html" %}
-  <p><a href="{% url 'console:users' %}">&larr; All users</a></p>
-  <h1>{{ user_obj.display_name }}</h1>
+  <div class="split">
+    <div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Accounts</h2>
+          <span class="badge plain">{{ user_obj.memberships.count }}</span>
+        </div>
+        {% if user_obj.memberships.all %}
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Account</th><th>Role</th><th>Status</th></tr></thead>
+              <tbody>
+                {% for m in user_obj.memberships.all %}
+                  <tr>
+                    <td>
+                      <div class="cell-main">{{ m.account.name }}</div>
+                      {% if m.is_owner %}<div class="cell-sub"><span class="badge accent">Owner</span></div>{% endif %}
+                    </td>
+                    <td>{{ m.role.name }}</td>
+                    <td>
+                      {% if m.is_active %}<span class="badge green">Active</span>
+                      {% else %}<span class="badge">Inactive</span>{% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="empty">
+            <div class="ico-box"><svg width="20" height="20" viewBox="0 0 16 16"><use href="#i-users"/></svg></div>
+            <h3>Not in any account</h3>
+            <p>They can sign in, but there is nothing for them to see yet.</p>
+          </div>
+        {% endif %}
+      </div>
 
-  <div class="card">
-    <div class="row" style="gap:40px;">
-      <div><div class="muted">Email</div>{{ user_obj.email }}</div>
-      <div><div class="muted">Status</div>
-        {% if user_obj.is_active %}<span class="badge green">Active</span>
-        {% else %}<span class="badge red">Inactive</span>{% endif %}
+      <div class="panel">
+        <div class="panel-head">
+          <svg class="ico" width="15" height="15" viewBox="0 0 16 16" style="color:var(--text-3)"><use href="#i-lock"/></svg>
+          <h2>Reset password</h2>
+        </div>
+        <form method="post" novalidate>
+          <div class="panel-body">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="password">
+            {% include "_fields.html" %}
+          </div>
+          <div class="panel-foot">
+            <button type="submit" class="btn">Set password</button>
+            <span class="sm muted">
+              There is no email backend, so pass it on yourself. They will be prompted
+              to change it after signing in.
+            </span>
+          </div>
+        </form>
       </div>
-      <div><div class="muted">System admin</div>
-        {% if user_obj.is_system_admin %}Yes{% else %}No{% endif %}
-      </div>
-      <div><div class="muted">Joined</div>{{ user_obj.date_joined|date:"j M Y" }}</div>
     </div>
 
-    <div style="margin-top:18px; display:flex; gap:8px; flex-wrap:wrap;">
-      <form class="inline-form" method="post">
-        {% csrf_token %}
-        {% if user_obj.is_active %}
-          <button type="submit" name="action" value="deactivate" class="btn red">Deactivate</button>
-        {% else %}
-          <button type="submit" name="action" value="activate" class="btn green">Activate</button>
-        {% endif %}
-      </form>
-      <form class="inline-form" method="post">
-        {% csrf_token %}
-        {% if user_obj.is_system_admin %}
-          <button type="submit" name="action" value="revoke_admin" class="btn secondary">Revoke system admin</button>
-        {% else %}
-          <button type="submit" name="action" value="grant_admin" class="btn secondary">Make system admin</button>
-        {% endif %}
-      </form>
-    </div>
-  </div>
-
-  <h2>Accounts</h2>
-  <div class="card">
-    <table>
-      <thead><tr><th>Account</th><th>Role</th><th>Status</th></tr></thead>
-      <tbody>
-        {% for m in user_obj.memberships.all %}
-          <tr>
-            <td>{{ m.account.name }}{% if m.is_owner %} <span class="badge accent">Owner</span>{% endif %}</td>
-            <td>{{ m.role.name }}</td>
-            <td>{% if m.is_active %}<span class="badge green">Active</span>{% else %}<span class="badge">Inactive</span>{% endif %}</td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="3" class="muted">Not in any account.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <h2>Reset password</h2>
-  <div class="card" style="max-width: 520px;">
-    <form method="post" novalidate>
-      {% csrf_token %}
-      <input type="hidden" name="action" value="password">
-      {% include "accounts/_form_fields.html" %}
-      <div style="margin-top:16px;"><button type="submit" class="btn">Set password</button></div>
-    </form>
-    <p class="muted" style="font-size:13px; margin-bottom:0; margin-top:14px;">
-      There is no email backend, so pass the new password on yourself. They will be
-      prompted to change it after signing in.
-    </p>
+    <aside class="rail">
+      <div class="panel">
+        <div class="panel-body">
+          <div class="row">
+            <span class="avatar" style="width:40px;height:40px;font-size:14px;">{{ user_obj.display_name|slice:":2"|upper }}</span>
+            <div class="grow" style="min-width:0;">
+              <div class="cell-main" style="overflow-wrap:anywhere;">{{ user_obj.display_name }}</div>
+              <div class="cell-sub" style="overflow-wrap:anywhere;">{{ user_obj.email }}</div>
+            </div>
+          </div>
+          <div class="row tight mt" style="gap:6px;">
+            {% if user_obj.is_active %}<span class="badge green">Active</span>
+            {% else %}<span class="badge red">Inactive</span>{% endif %}
+            {% if user_obj.is_system_admin %}<span class="badge accent">System admin</span>{% endif %}
+            {% if user_obj.must_change_password %}<span class="badge amber">Must change password</span>{% endif %}
+          </div>
+          <dl class="stat-list mt">
+            <div class="stat-row"><dt>Joined</dt><dd>{{ user_obj.date_joined|date:"j M Y" }}</dd></div>
+            <div class="stat-row"><dt>Last sign-in</dt><dd>{{ user_obj.last_login|date:"j M Y"|default:"never" }}</dd></div>
+            <div class="stat-row"><dt>Django staff</dt><dd>{% if user_obj.is_staff %}yes{% else %}no{% endif %}</dd></div>
+          </dl>
+        </div>
+        <div class="panel-foot" style="flex-direction:column;align-items:stretch;">
+          <form method="post">
+            {% csrf_token %}
+            {% if user_obj.is_active %}
+              <button type="submit" name="action" value="deactivate" class="btn danger block">Deactivate</button>
+            {% else %}
+              <button type="submit" name="action" value="activate" class="btn success block">Activate</button>
+            {% endif %}
+          </form>
+          <form method="post">
+            {% csrf_token %}
+            {% if user_obj.is_system_admin %}
+              <button type="submit" name="action" value="revoke_admin" class="btn ghost block">Revoke system admin</button>
+            {% else %}
+              <button type="submit" name="action" value="grant_admin" class="btn ghost block">Make system admin</button>
+            {% endif %}
+          </form>
+        </div>
+      </div>
+    </aside>
   </div>
 {% endblock %}

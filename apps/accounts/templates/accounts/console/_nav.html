@@ -1,7 +1,18 @@
-<p class="muted" style="font-size:13px;">
-  <a href="{% url 'console:dashboard' %}">Console</a> &nbsp;·&nbsp;
-  <a href="{% url 'console:requests' %}">Requests</a> &nbsp;·&nbsp;
-  <a href="{% url 'console:users' %}">Users</a> &nbsp;·&nbsp;
-  <a href="{% url 'console:accounts' %}">Accounts</a> &nbsp;·&nbsp;
-  <a href="{% url 'console:default_roles' %}">Default roles</a>
-</p>
+{% comment %}
+Sub-navigation for the console. It sits inside the page rather than the sidebar
+because the console is one nav entry with five screens, and duplicating them in the
+rail would crowd out the workspace.
+{% endcomment %}
+<div class="panel">
+  <div class="panel-body tight row" style="gap:4px;">
+    <a class="btn {% if console_tab == 'dashboard' %}ghost{% else %}quiet{% endif %} sm" href="{% url 'console:dashboard' %}">Overview</a>
+    <a class="btn {% if console_tab == 'requests' %}ghost{% else %}quiet{% endif %} sm" href="{% url 'console:requests' %}">
+      Requests
+      {% if pending_request_count %}<span class="tag standalone">{{ pending_request_count }}</span>{% endif %}
+    </a>
+    <a class="btn {% if console_tab == 'users' %}ghost{% else %}quiet{% endif %} sm" href="{% url 'console:users' %}">Users</a>
+    <a class="btn {% if console_tab == 'accounts' %}ghost{% else %}quiet{% endif %} sm" href="{% url 'console:accounts' %}">Accounts</a>
+    <a class="btn {% if console_tab == 'roles' %}ghost{% else %}quiet{% endif %} sm" href="{% url 'console:default_roles' %}">Default roles</a>
+    <a class="btn quiet sm right" href="/admin/">Django admin &rarr;</a>
+  </div>
+</div>

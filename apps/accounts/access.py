@@ -13,7 +13,7 @@ from django.urls import reverse
 
 from . import permissions as perms
 from .permissions import ALL_CODENAMES, Perm  # noqa: F401  (re-exported for views)
-from .repositories import MembershipRepository
+from .repositories import AccountRequestRepository, MembershipRepository
 
 SESSION_ACCOUNT_KEY = "active_account_id"
 
@@ -127,8 +127,41 @@ class AccountMiddleware:
         return self.get_response(request)
 
 
+# Which sidebar entry a view belongs under. Keyed by URL namespace, then by the
+# url_name for namespaces that cover more than one section. Computed here rather
+# than in the template because Django templates cannot test a string prefix.
+_NAV_BY_NAMESPACE = {
+    "videos": "videos",
+    "templates": "templates",
+    "console": "console",
+}
+_NAV_BY_URL_NAME = {
+    "user_list": "users",
+    "user_create": "users",
+    "user_edit": "users",
+    "user_remove": "users",
+    "role_list": "roles",
+    "role_create": "roles",
+    "role_edit": "roles",
+    "role_delete": "roles",
+    "settings": "settings",
+    "my_profile": "profile",
+}
+
+
+def nav_section(request):
+    """The sidebar entry to mark active, or None."""
+    match = getattr(request, "resolver_match", None)
+    if match is None:
+        return None
+    section = _NAV_BY_NAMESPACE.get(match.namespace)
+    if section is not None:
+        return section
+    return _NAV_BY_URL_NAME.get(match.url_name)
+
+
 def access_context(request):
-    """Template context processor: ``account``, ``switchable_accounts``, ``can``."""
+    """Template context processor: ``account``, ``can``, and the active nav entry."""
     ctx = context_for(request)
     user = getattr(request, "user", None)
 
@@ -141,6 +174,11 @@ def access_context(request):
         "membership": ctx.membership,
         "account_memberships": memberships,
         "is_system_admin": ctx.is_system_admin,
+        "nav": nav_section(request),
+        # Badge on the Console link. Only queried for the people who can act on it.
+        "pending_request_count": (
+            AccountRequestRepository.pending_count() if ctx.is_system_admin else 0
+        ),
         # Underscored keys: Django templates cannot resolve a dotted dict key.
         "can": {
             perms.as_template_key(codename): codename in ctx.codenames

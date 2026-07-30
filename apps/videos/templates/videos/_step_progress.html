@@ -1,16 +1,18 @@
 {% comment %}
-Live progress widget for a running/approved step, updated in place by the
-detail-page poller. Include it with a `step` variable in context.
+Live progress for a running/approved step, updated in place by the detail-page
+poller. Include with a `step` in context.
+
+The data- attributes are the poller's contract: data-step on the wrapper,
+data-step-progress for the message, data-step-bar-wrap / data-step-bar for the
+determinate bar. Renaming them breaks live updates.
 {% endcomment %}
 <div class="step-progress" data-step="{{ step.pk }}">
-  <div class="muted" data-step-progress style="font-size:12px;">
+  <div class="msg" data-step-progress>
     {{ step.progress_message|default:"Working…" }}{% if step.progress_total %} ({{ step.progress_current }}/{{ step.progress_total }}){% endif %}
   </div>
   {% if step.progress_total %}
-    <div data-step-bar-wrap style="height:4px;max-width:220px;background:var(--border);border-radius:2px;margin-top:6px;">
-      <div data-step-bar style="height:100%;width:0;background:var(--accent);border-radius:2px;"></div>
-    </div>
+    <div class="progress" data-step-bar-wrap><i data-step-bar></i></div>
   {% else %}
-    <div class="progress-indeterminate" style="margin-top:6px;"></div>
+    <span class="progress-indeterminate"></span>
   {% endif %}
 </div>

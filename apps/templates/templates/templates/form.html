@@ -1,27 +1,36 @@
 {% extends "base.html" %}
 {% block title %}{{ title }}{% endblock %}
-{% block content %}
-  <p><a href="{% url 'templates:list' %}">&larr; Templates</a></p>
-  <h1>{{ title }}</h1>
 
-  <div class="card" style="max-width: 720px;">
-    <form method="post" novalidate>
-      {% csrf_token %}
-      {% for field in form %}
-        <div>
-          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-          {{ field }}
-          {% if field.help_text %}<div class="muted" style="font-size:13px;margin-top:4px;">{{ field.help_text }}</div>{% endif %}
-          {% for error in field.errors %}<div class="badge red" style="margin-top:6px;">{{ error }}</div>{% endfor %}
+{% block topbar %}
+  <div class="crumb">
+    <a href="{% url 'templates:list' %}">
+      <svg class="ico" width="13" height="13" viewBox="0 0 16 16" style="vertical-align:-2px"><use href="#i-back"/></svg>
+      Templates
+    </a>
+    <span class="sep">/</span>
+    <h1>{{ title }}</h1>
+  </div>
+{% endblock %}
+
+{% block topbar_actions %}
+  {% if template %}
+    <a class="btn danger sm" href="{% url 'templates:delete' template.pk %}">Delete</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <div class="max-md">
+    <div class="panel">
+      <form method="post" novalidate>
+        <div class="panel-body">
+          {% csrf_token %}
+          {% include "_fields.html" %}
         </div>
-      {% endfor %}
-      <div style="margin-top: 20px;">
-        <button type="submit" class="btn">Save</button>
-        <a class="btn secondary" href="{% url 'templates:list' %}">Cancel</a>
-        {% if template %}
-          <a class="btn red" style="float:right;" href="{% url 'templates:delete' template.pk %}">Delete</a>
-        {% endif %}
-      </div>
-    </form>
+        <div class="panel-foot">
+          <button type="submit" class="btn">Save template</button>
+          <a class="btn quiet" href="{% url 'templates:list' %}">Cancel</a>
+        </div>
+      </form>
+    </div>
   </div>
 {% endblock %}

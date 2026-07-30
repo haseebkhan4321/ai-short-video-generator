@@ -1,0 +1,35 @@
+{% comment %}
+Renders a form's fields. Every form page uses this so labels, help text and errors
+look the same everywhere.
+
+  {% include "_fields.html" %}                      all fields
+  {% include "_fields.html" with skip="permissions" %}   all but one, when that field
+                                                        has its own layout
+
+`skip` is an exact field name, not a list — one exception is all any form here needs,
+and an exact match cannot misfire the way a substring test would.
+{% endcomment %}
+{% for error in form.non_field_errors %}
+  <div class="error">
+    <svg class="ico" width="14" height="14" viewBox="0 0 16 16" style="flex:0 0 auto;margin-top:1px"><use href="#i-alert"/></svg>
+    <span>{{ error }}</span>
+  </div>
+{% endfor %}
+
+{% for field in form %}
+  {% if field.name != skip %}
+    <div class="field">
+      <label for="{{ field.id_for_label }}">
+        {{ field.label }}{% if field.field.required %}{% else %} <span class="muted">(optional)</span>{% endif %}
+      </label>
+      {{ field }}
+      {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+      {% for error in field.errors %}
+        <div class="error">
+          <svg class="ico" width="14" height="14" viewBox="0 0 16 16" style="flex:0 0 auto;margin-top:1px"><use href="#i-alert"/></svg>
+          <span>{{ error }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endfor %}

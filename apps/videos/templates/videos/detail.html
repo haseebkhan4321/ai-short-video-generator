@@ -1,364 +1,481 @@
 {% extends "base.html" %}
 {% load video_extras %}
 {% block title %}{{ video }}{% endblock %}
-{% block content %}
-  <p><a href="{% url 'videos:list' %}">&larr; Videos</a></p>
 
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px;">
-    <div style="min-width:0; flex:1;">
-      <h1 style="margin:0 0 4px; overflow-wrap:anywhere;">{{ video.title|default:video.premise|truncatechars:80 }}</h1>
-      <div class="muted" style="margin-bottom:10px;">
-        Template: <a href="{% url 'templates:detail' video.template.pk %}">{{ video.template.name }}</a>
-        {% if video.status == "completed" %}&nbsp;·&nbsp; <span class="badge green">Completed</span>{% endif %}
-        {% if video.status == "failed" %}&nbsp;·&nbsp; <span class="badge red">Failed</span>{% endif %}
-      </div>
+{% block topbar %}
+  <div class="crumb">
+    <a href="{% url 'videos:list' %}">
+      <svg class="ico" width="13" height="13" viewBox="0 0 16 16" style="vertical-align:-2px"><use href="#i-back"/></svg>
+      Videos
+    </a>
+    <span class="sep">/</span>
+    <h1>{{ video.title|default:video.premise|truncatechars:70 }}</h1>
+  </div>
+{% endblock %}
+
+{% block topbar_actions %}
+  <span class="badge {{ video.status|status_class }}">{{ video.get_status_display }}</span>
+  {% if can.video_delete %}
+    <a class="btn danger sm" href="{% url 'videos:delete' video.pk %}">Delete</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  {# Pipeline position, full width so it reads as a header rather than a widget. #}
+  <div class="panel">
+    <div class="panel-body tight between">
       <div class="stepper">
         {% for s in stages %}
-          <span class="step {{ s.state }}">{{ s.label }}</span>
-          {% if not forloop.last %}<span class="step-sep"></span>{% endif %}
+          <span class="step {{ s.state }}"><i class="dot"></i>{{ s.label }}</span>
+          {% if not forloop.last %}<span class="line"></span>{% endif %}
         {% endfor %}
       </div>
+      <a class="dim sm" href="{% url 'templates:detail' video.template.pk %}">{{ video.template.name }}</a>
     </div>
-    {% if can.video_delete %}
-      <a class="btn secondary" style="flex:0 0 auto;" href="{% url 'videos:delete' video.pk %}">Delete</a>
-    {% endif %}
   </div>
 
   {% if video.error_message and video.status == "failed" %}
-    <div class="card" style="border-color: var(--red);">
-      <strong style="color:var(--red);">Error:</strong> {{ video.error_message }}
+    <div class="panel danger">
+      <div class="panel-body tight row top">
+        <svg class="ico" width="16" height="16" viewBox="0 0 16 16" style="color:var(--red);flex:0 0 auto;margin-top:3px"><use href="#i-alert"/></svg>
+        <div class="grow">
+          <b>A step failed</b>
+          <div class="sm dim mt" style="margin-top:4px;">{{ video.error_message }}</div>
+        </div>
+      </div>
     </div>
   {% endif %}
 
-  {# Live activity banner — populated/shown by the poller while a step runs. #}
-  <div id="activity-banner" class="card" style="display:none; border-color: var(--accent);">
-    <div class="row" style="align-items:center; gap:14px; flex-wrap:nowrap;">
+  {# Shown and populated by the poller while a step runs. #}
+  <div id="activity-banner" class="panel activity hidden">
+    <div class="panel-body tight row" style="width:100%">
       <span class="spinner" aria-hidden="true"></span>
-      <div style="flex:1; min-width:0;">
-        <div><strong data-banner-label>Working…</strong></div>
-        <div class="muted" data-banner-msg style="font-size:13px;"></div>
-        <div data-banner-bar-wrap style="display:none; height:5px; background:var(--border); border-radius:3px; margin-top:8px;">
-          <div data-banner-bar style="height:100%; width:0; background:var(--accent); border-radius:3px; transition:width .3s;"></div>
-        </div>
+      <div class="who">
+        <b data-banner-label>Working…</b>
+        <div class="msg sm muted" data-banner-msg></div>
+        <div class="progress mt hidden" data-banner-bar-wrap style="margin-top:8px;"><i data-banner-bar></i></div>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="row" style="gap: 40px;">
-      <div><div class="muted">Target length</div>{{ video.target_minutes }} min</div>
-      <div><div class="muted">Actual length</div>
-        {% if video.duration_seconds %}{{ video.duration_seconds|floatformat:0 }} s{% else %}—{% endif %}
-      </div>
-      <div><div class="muted">Words</div>{{ video.total_words|default:"—" }}</div>
-      <div><div class="muted">Total spent</div>{{ video.total_cost_usd|pkr }}</div>
-      <div><div class="muted">Budget cap</div>{{ budget_cap|pkr }}</div>
-    </div>
-    <div style="margin-top:14px;"><div class="muted">Premise</div>{{ video.premise }}</div>
-  </div>
-
-  {% if video.script %}
-    <div class="card">
-      <details>
-        <summary style="cursor:pointer;"><strong>Script</strong> <span class="muted">({{ video.total_words|default:0 }} words)</span></summary>
-        <pre style="white-space:pre-wrap;margin-top:12px;">{{ video.script }}</pre>
-      </details>
-      {% if video.description %}<div style="margin-top:12px;"><div class="muted">Description</div>{{ video.description }}</div>{% endif %}
-      {% if video.hashtags %}<div style="margin-top:12px;"><div class="muted">Hashtags</div>{{ video.hashtags|join:" " }}</div>{% endif %}
-    </div>
-  {% endif %}
-
-  {# ---- Next step: the single 'what do I do now?' panel ---- #}
-  {% if next_step %}
-    <div class="card next-step {{ next_step.tone }}">
-      <div class="row" style="align-items:flex-start; gap:16px; justify-content:space-between; flex-wrap:wrap;">
-        <div style="flex:1; min-width:220px;">
-          <div class="kicker">Next step</div>
-          <h3 style="margin:4px 0 6px;">{{ next_step.title }}</h3>
-          <div class="muted" style="font-size:14px;">{{ next_step.detail }}</div>
-        </div>
-        {% if next_step.primary.allowed or actions %}
-          <div style="display:flex; flex-direction:column; gap:8px; flex:0 0 auto;">
-            {% if next_step.primary.allowed %}
-              <form method="post" action="{{ next_step.primary.url }}">
-                {% csrf_token %}
-                <button class="btn green" type="submit">
-                  {{ next_step.primary.label }}
-                  {% if next_step.primary.paid %}<span class="cost-tag">{{ next_step.primary.cost|pkr }}</span>{% else %}<span class="cost-tag free">Free</span>{% endif %}
-                </button>
-              </form>
+  <div class="split">
+    {# ---------------- Main column ---------------- #}
+    <div>
+      {% if video.script %}
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Script</h2>
+            <span class="badge plain">{{ video.total_words|default:0 }} words</span>
+            <div class="right">
+              {% if video.hashtags %}<span class="sm muted">{{ video.hashtags|length }} hashtags</span>{% endif %}
+            </div>
+          </div>
+          <div class="panel-body">
+            {% if video.description %}
+              <div class="mb">
+                <div class="kicker mb" style="margin-bottom:6px;">Description</div>
+                <div class="dim">{{ video.description }}</div>
+              </div>
             {% endif %}
-            {% for a in actions %}
-              {% if a.allowed %}
-                <form method="post" action="{% url 'videos:batch_approve' video.pk %}">
-                  {% csrf_token %}
-                  <input type="hidden" name="step_type" value="{{ a.step_type }}">
-                  <button class="btn {% if a.paid %}green{% else %}secondary{% endif %}" type="submit">
-                    {{ a.label }}
-                    {% if a.paid %}<span class="cost-tag">{{ a.cost|pkr }}</span>{% else %}<span class="cost-tag free">Free</span>{% endif %}
-                  </button>
-                </form>
-              {% endif %}
-            {% endfor %}
+            {% if video.hashtags %}
+              <div class="row tight mb" style="gap:6px;">
+                {% for tag in video.hashtags %}<span class="badge plain">{{ tag }}</span>{% endfor %}
+              </div>
+            {% endif %}
+            <details class="reveal">
+              <summary>Read the full script</summary>
+              <div class="reveal-body">
+                <pre class="script-body">{{ video.script }}</pre>
+              </div>
+            </details>
           </div>
-        {% endif %}
-      </div>
-      <div class="muted" style="font-size:12px; margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
-        You approve the <strong>script</strong> and <strong>images</strong> (paid), plus <strong>narration</strong> (free).
-        Splitting, per-part preview videos, merging and the final render all happen automatically.
-      </div>
-    </div>
-  {% endif %}
+        </div>
+      {% else %}
+        <div class="panel">
+          <div class="empty">
+            <div class="ico-box"><svg width="20" height="20" viewBox="0 0 16 16"><use href="#i-spark"/></svg></div>
+            <h3>No script yet</h3>
+            <p>{{ next_step.detail|default:"The script is written first; everything else is built from it." }}</p>
+          </div>
+        </div>
+      {% endif %}
 
-  {% if video.final_video_path %}
-    <div class="card">
-      <h2>Final video</h2>
-      <video controls style="width:100%;max-width:900px;" src="/media/{{ video.final_video_path }}"></video>
-    </div>
-  {% endif %}
+      {% if video.final_video_path %}
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Final video</h2>
+            <div class="right"><span class="badge green">Ready</span></div>
+          </div>
+          <div class="panel-body">
+            <div class="media-frame" style="margin-top:0;">
+              <video controls preload="metadata" src="/media/{{ video.final_video_path }}"></video>
+            </div>
+          </div>
+        </div>
+      {% endif %}
 
-  {% if video.narration_audio_path %}
-    <div class="card">
-      <h2>Full narration</h2>
-      {% include "videos/_audio_player.html" with path=video.narration_audio_path %}
-    </div>
-  {% endif %}
+      {% if video.narration_audio_path %}
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Full narration</h2>
+            <div class="right"><span class="badge plain">{{ video.duration_seconds|duration }}</span></div>
+          </div>
+          <div class="panel-body">
+            {% include "videos/_audio_player.html" with path=video.narration_audio_path %}
+          </div>
+        </div>
+      {% endif %}
 
-  {# ---- Parts / chapters ---- #}
-  {% if parts %}
-    <h2>Parts ({{ parts|length }})</h2>
-    {% for part in parts %}
-      {% with chapter=part.chapter %}
-      <div class="card" data-part="{{ chapter.pk }}">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <strong>Part {{ chapter.chapter_number }}{% if chapter.title %}: {{ chapter.title }}{% endif %}</strong>
-          <span class="muted">{{ chapter.word_count }} words</span>
+      {% if parts %}
+        <div class="section">
+          <h2>Parts</h2>
+          <span class="badge plain">{{ parts|length }}</span>
+          <span class="rule"></span>
         </div>
 
-        {# per-part status: images + narration #}
-        <div class="row" style="gap:10px; margin-top:8px; align-items:center;">
-          <span class="muted" style="font-size:13px;">Images:</span>
-          {% if part.image_step %}
-            <span class="badge {{ part.image_step.status|step_status_class }}">{{ part.image_step.get_status_display }}</span>
-          {% else %}<span class="muted">—</span>{% endif %}
-          <span class="muted" style="font-size:13px;margin-left:12px;">Narration:</span>
-          {% if part.narration_step %}
-            <span class="badge {{ part.narration_step.status|step_status_class }}">{{ part.narration_step.get_status_display }}</span>
-          {% else %}<span class="muted">—</span>{% endif %}
-
-          {% if part.pending_count and part.may_approve %}
-            <form class="inline-form" method="post" action="{% url 'videos:part_approve' video.pk chapter.pk %}" style="margin-left:auto;">
-              {% csrf_token %}
-              <button type="submit" class="btn green">
-                {% if part.image_step.status == "pending_approval" and part.narration_step.status == "pending_approval" %}
-                  Generate this part<span class="cost-tag">images {{ part.pending_estimate|pkr }} · narration free</span>
-                {% elif part.image_step.status == "pending_approval" %}
-                  Generate images<span class="cost-tag">{{ part.pending_estimate|pkr }}</span>
-                {% else %}
-                  Generate narration<span class="cost-tag free">Free</span>
-                {% endif %}
-              </button>
-            </form>
-          {% endif %}
-        </div>
-
-        {% if part.image_step.status == "running" or part.image_step.status == "approved" %}
-          <div style="margin-top:8px;">{% include "videos/_step_progress.html" with step=part.image_step %}</div>
-        {% endif %}
-        {% if part.narration_step.status == "running" or part.narration_step.status == "approved" %}
-          <div style="margin-top:8px;">{% include "videos/_step_progress.html" with step=part.narration_step %}</div>
-        {% endif %}
-
-        {% if chapter.images.all %}
-          <div class="row" style="margin-top:10px;">
-            {% for img in chapter.images.all %}
-              {% if img.image_path %}
-                <img src="/media/{{ img.image_path }}" style="height:90px;border-radius:6px;border:1px solid var(--border);">
-              {% endif %}
-            {% endfor %}
-          </div>
-        {% endif %}
-
-        {% if chapter.video_path %}
-          {# Per-part preview: images panned over this part's narration (has audio). #}
-          <video controls preload="metadata"
-                 style="width:100%;max-width:760px;margin-top:10px;border-radius:8px;border:1px solid var(--border);background:#000;"
-                 src="/media/{{ chapter.video_path }}"></video>
-        {% elif part.render_step.status == "running" or part.render_step.status == "approved" %}
-          <div style="margin-top:10px;">
-            <div class="muted" style="font-size:12px;margin-bottom:4px;">Rendering part video…</div>
-            {% include "videos/_step_progress.html" with step=part.render_step %}
-          </div>
-          {% if chapter.narration_audio_path %}
-            <div style="margin-top:10px;">{% include "videos/_audio_player.html" with path=chapter.narration_audio_path %}</div>
-          {% endif %}
-        {% elif chapter.narration_audio_path %}
-          <div style="margin-top:10px;">
-            {% include "videos/_audio_player.html" with path=chapter.narration_audio_path %}
-          </div>
-        {% endif %}
-        <details style="margin-top:10px;">
-          <summary style="cursor:pointer;" class="muted">Text</summary>
-          <pre style="white-space:pre-wrap;margin-top:8px;">{{ chapter.body }}</pre>
-        </details>
-      </div>
-      {% endwith %}
-    {% endfor %}
-  {% endif %}
-
-  {# ---- Steps timeline (technical detail, collapsed by default) ---- #}
-  <details style="margin-top:10px;">
-    <summary style="cursor:pointer; font-size:15px; font-weight:600; color:var(--muted); padding:6px 0;">
-      Technical details ({{ steps|length }} step{{ steps|length|pluralize }})
-    </summary>
-  {% if steps %}
-    <div class="card" style="margin-top:10px;">
-      <table>
-        <thead>
-          <tr><th>Step</th><th>Provider</th><th>Status</th><th>Est.</th><th>Actual</th><th>Actions</th></tr>
-        </thead>
-        <tbody>
-          {% for step in steps %}
-            <tr data-step="{{ step.pk }}">
-              <td>
-                {{ step.get_step_type_display }}
-                {% if step.chapter_id %}<span class="muted">(part {{ step.chapter.chapter_number }})</span>{% endif %}
-                {% if step.approved_by %}
-                  <div class="muted" style="font-size:12px;">approved by {{ step.approved_by.display_name }}</div>
-                {% endif %}
-              </td>
-              <td>{{ step.get_provider_display }}</td>
-              <td>
-                <span class="badge {{ step.status|step_status_class }}" data-step-badge>{{ step.get_status_display }}</span>
-                {% if step.error_message %}<div class="badge red" style="margin-top:4px;">{{ step.error_message|truncatechars:80 }}</div>{% endif %}
-              </td>
-              <td>{{ step.estimated_cost_usd|pkr }}</td>
-              <td>{% if step.actual_cost_usd is not None %}{{ step.actual_cost_usd|pkr }}{% else %}—{% endif %}</td>
-              <td>
-                {% if step.status == "pending_approval" %}
-                  {% if step.may_approve %}
-                    <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
-                      {% csrf_token %}
-                      <button type="submit" class="btn green">Approve</button>
-                    </form>
-                    {% if can.step_override_budget %}
-                      <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="force" value="1">
-                        <button type="submit" class="btn secondary" title="Ignore budget cap">Approve anyway</button>
-                      </form>
-                    {% endif %}
-                  {% endif %}
-                  {% if can.step_reject %}
-                    <form class="inline-form" method="post" action="{% url 'videos:step_reject' video.pk step.pk %}">
-                      {% csrf_token %}
-                      <button type="submit" class="btn red">Reject</button>
-                    </form>
-                  {% endif %}
-                  {% if not step.may_approve and not can.step_reject %}
-                    <span class="muted">Awaiting approval</span>
-                  {% endif %}
-                {% elif step.status == "rejected" or step.status == "failed" %}
-                  {% if can.step_regenerate %}
-                    <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}">
-                      {% csrf_token %}
-                      <button type="submit" class="btn secondary">Retry</button>
-                    </form>
-                  {% else %}
-                    <span class="muted">—</span>
-                  {% endif %}
-                {% elif step.status == "approved" or step.status == "running" %}
-                  {% include "videos/_step_progress.html" with step=step %}
-                {% elif step.status == "completed" and step.provider != "local" and can.step_regenerate %}
-                  <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}"
-                        onsubmit="return confirm('Regenerate {{ step.get_step_type_display }}? This creates a new pending step you must approve (it will cost again).');">
+        {% for part in parts %}
+          {% with chapter=part.chapter %}
+            <div class="panel part" data-part="{{ chapter.pk }}">
+              <div class="panel-head">
+                <span class="part-no">{{ chapter.chapter_number }}</span>
+                <div class="part-title grow">
+                  {{ chapter.title|default:"Untitled part" }}
+                  <span class="words">{{ chapter.word_count }} words</span>
+                </div>
+                <div class="part-states">
+                  <span class="part-state">
+                    Images
+                    {% if part.image_step %}
+                      <span class="badge {{ part.image_step.status|step_status_class }} {% if part.image_step.status == 'running' %}live{% endif %}">{{ part.image_step.get_status_display }}</span>
+                    {% else %}<span class="muted">—</span>{% endif %}
+                  </span>
+                  <span class="part-state">
+                    Narration
+                    {% if part.narration_step %}
+                      <span class="badge {{ part.narration_step.status|step_status_class }} {% if part.narration_step.status == 'running' %}live{% endif %}">{{ part.narration_step.get_status_display }}</span>
+                    {% else %}<span class="muted">—</span>{% endif %}
+                  </span>
+                </div>
+                {% if part.pending_count and part.may_approve %}
+                  <form method="post" action="{% url 'videos:part_approve' video.pk chapter.pk %}">
                     {% csrf_token %}
-                    <button type="submit" class="btn secondary" title="Create a fresh pending copy">Regenerate</button>
+                    <button type="submit" class="btn success sm">
+                      {% if part.image_step.status == "pending_approval" and part.narration_step.status == "pending_approval" %}
+                        Generate part<span class="tag">{{ part.pending_estimate|pkr }}</span>
+                      {% elif part.image_step.status == "pending_approval" %}
+                        Generate images<span class="tag">{{ part.pending_estimate|pkr }}</span>
+                      {% else %}
+                        Generate narration<span class="tag free">Free</span>
+                      {% endif %}
+                    </button>
                   </form>
-                {% else %}
-                  <span class="muted">—</span>
                 {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              </div>
+
+              <div class="panel-body">
+                {% if part.image_step.status == "running" or part.image_step.status == "approved" %}
+                  {% include "videos/_step_progress.html" with step=part.image_step %}
+                {% endif %}
+                {% if part.narration_step.status == "running" or part.narration_step.status == "approved" %}
+                  {% include "videos/_step_progress.html" with step=part.narration_step %}
+                {% endif %}
+
+                {% if chapter.images.all %}
+                  <div class="thumbs" style="margin-top:0;">
+                    {% for img in chapter.images.all %}
+                      {% if img.image_path %}
+                        <img class="thumb" src="/media/{{ img.image_path }}" alt="Part {{ chapter.chapter_number }} image {{ img.order }}" loading="lazy">
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                {% endif %}
+
+                {% if chapter.video_path %}
+                  <div class="media-frame">
+                    <video controls preload="metadata" src="/media/{{ chapter.video_path }}"></video>
+                  </div>
+                {% elif part.render_step.status == "running" or part.render_step.status == "approved" %}
+                  <div class="mt">
+                    <div class="kicker" style="margin-bottom:6px;">Rendering part video</div>
+                    {% include "videos/_step_progress.html" with step=part.render_step %}
+                  </div>
+                  {% if chapter.narration_audio_path %}
+                    <div class="mt">{% include "videos/_audio_player.html" with path=chapter.narration_audio_path %}</div>
+                  {% endif %}
+                {% elif chapter.narration_audio_path %}
+                  <div class="mt">{% include "videos/_audio_player.html" with path=chapter.narration_audio_path %}</div>
+                {% endif %}
+
+                <details class="reveal">
+                  <summary>Part text</summary>
+                  <div class="reveal-body"><pre class="script-body">{{ chapter.body }}</pre></div>
+                </details>
+              </div>
+            </div>
+          {% endwith %}
+        {% endfor %}
+      {% endif %}
+
+      {# ---- Technical detail, collapsed: the audit trail rather than the workflow ---- #}
+      <details class="reveal" style="margin-top:22px;">
+        <summary>Technical details · {{ steps|length }} step{{ steps|length|pluralize }}</summary>
+        <div class="reveal-body">
+          {% if steps %}
+            <div class="panel flush">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Step</th>
+                      <th>Provider</th>
+                      <th>Status</th>
+                      <th class="num">Estimate</th>
+                      <th class="num">Actual</th>
+                      <th class="actions">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for step in steps %}
+                      <tr data-step="{{ step.pk }}">
+                        <td>
+                          <div class="cell-main">
+                            {{ step.get_step_type_display }}
+                            {% if step.chapter_id %}<span class="muted">· part {{ step.chapter.chapter_number }}</span>{% endif %}
+                          </div>
+                          {% if step.approved_by %}
+                            <div class="cell-sub">approved by {{ step.approved_by.display_name }}</div>
+                          {% endif %}
+                        </td>
+                        <td class="dim">{{ step.get_provider_display }}</td>
+                        <td>
+                          <span class="badge {{ step.status|step_status_class }} {% if step.status == 'running' %}live{% endif %}" data-step-badge>{{ step.get_status_display }}</span>
+                          {% if step.error_message %}
+                            <div class="cell-sub" style="color:#ff9aab;">{{ step.error_message|truncatechars:90 }}</div>
+                          {% endif %}
+                        </td>
+                        <td class="num dim">{{ step.estimated_cost_usd|pkr }}</td>
+                        <td class="num">{% if step.actual_cost_usd is not None %}{{ step.actual_cost_usd|pkr }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                        <td class="actions">
+                          {% if step.status == "pending_approval" %}
+                            <div class="btn-row">
+                              {% if step.may_approve %}
+                                <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
+                                  {% csrf_token %}
+                                  <button type="submit" class="btn success sm">Approve</button>
+                                </form>
+                                {% if can.step_override_budget %}
+                                  <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="force" value="1">
+                                    <button type="submit" class="btn ghost sm" title="Ignore the budget cap">Approve anyway</button>
+                                  </form>
+                                {% endif %}
+                              {% endif %}
+                              {% if can.step_reject %}
+                                <form class="inline-form" method="post" action="{% url 'videos:step_reject' video.pk step.pk %}">
+                                  {% csrf_token %}
+                                  <button type="submit" class="btn danger sm">Reject</button>
+                                </form>
+                              {% endif %}
+                              {% if not step.may_approve and not can.step_reject %}
+                                <span class="muted sm">Awaiting approval</span>
+                              {% endif %}
+                            </div>
+                          {% elif step.status == "rejected" or step.status == "failed" %}
+                            {% if can.step_regenerate %}
+                              <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn ghost sm">Retry</button>
+                              </form>
+                            {% else %}<span class="muted">—</span>{% endif %}
+                          {% elif step.status == "approved" or step.status == "running" %}
+                            {% include "videos/_step_progress.html" with step=step %}
+                          {% elif step.status == "completed" and step.provider != "local" and can.step_regenerate %}
+                            <form class="inline-form" method="post"
+                                  action="{% url 'videos:step_regenerate' video.pk step.pk %}"
+                                  data-confirm="Regenerate {{ step.get_step_type_display }}? This queues a new step you must approve, and it will cost again.">
+                              {% csrf_token %}
+                              <button type="submit" class="btn ghost sm" title="Queue a fresh copy">Regenerate</button>
+                            </form>
+                          {% else %}
+                            <span class="muted">—</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          {% else %}
+            <div class="panel"><div class="panel-body"><p class="muted">No steps yet.</p></div></div>
+          {% endif %}
+        </div>
+      </details>
     </div>
-  {% else %}
-    <div class="card"><p class="muted">No steps yet.</p></div>
-  {% endif %}
-  </details>
 
-  <script>
-    (function () {
-      var statusUrl = "{% url 'videos:status' video.pk %}";
-      var currentSig = "{{ initial_signature|escapejs }}";
+    {# ---------------- Sticky rail ---------------- #}
+    <aside class="rail">
+      {# Spend first: what this has already cost is the context for approving more. #}
+      <div class="panel">
+        <div class="panel-head">
+          <svg class="ico" width="15" height="15" viewBox="0 0 16 16" style="color:var(--text-3)"><use href="#i-money"/></svg>
+          <h2>Spend</h2>
+        </div>
+        <div class="panel-body">
+          <div class="between" style="align-items:flex-end;margin-bottom:10px;">
+            <div>
+              <div class="stat-label">Total spent</div>
+              <div class="stat-value">{{ video.total_cost_usd|pkr }}</div>
+            </div>
+            <div class="sm muted tabular">
+              {{ video.total_cost_usd|percent_of:budget_cap }}% of cap
+            </div>
+          </div>
+          <div class="meter">
+            {% with used=video.total_cost_usd|percent_of:budget_cap %}
+              <i class="meter-fill {% if used >= 90 %}over{% elif used >= 70 %}warn{% endif %}"
+                 style="width:{{ used }}%"></i>
+            {% endwith %}
+          </div>
+          <div class="sm muted mt" style="margin-top:8px;">Cap {{ budget_cap|pkr }} per video</div>
 
-      function pct(cur, total) {
-        return Math.min(100, Math.round(100 * (cur || 0) / total)) + '%';
-      }
+          <dl class="stat-list mt">
+            <div class="stat-row"><dt>Target length</dt><dd>{{ video.target_minutes }} min</dd></div>
+            <div class="stat-row"><dt>Actual length</dt><dd>{{ video.duration_seconds|duration }}</dd></div>
+            <div class="stat-row"><dt>Words</dt><dd>{{ video.total_words|default:"—" }}</dd></div>
+            <div class="stat-row"><dt>Parts</dt><dd>{{ parts|length|default:"—" }}</dd></div>
+          </dl>
+        </div>
+      </div>
 
-      function updateSteps(steps) {
-        steps.forEach(function (s) {
-          // Progress widgets can appear in more than one place (part card + steps
-          // table), so update every matching one.
-          document.querySelectorAll('.step-progress[data-step="' + s.id + '"]').forEach(function (w) {
-            var line = w.querySelector('[data-step-progress]');
-            if (line) {
-              var txt = s.progress_message || 'Working…';
-              if (s.progress_total) txt += ' (' + s.progress_current + '/' + s.progress_total + ')';
-              line.textContent = txt;
-            }
-            var barWrap = w.querySelector('[data-step-bar-wrap]');
-            var bar = w.querySelector('[data-step-bar]');
-            if (bar && s.progress_total) {
-              if (barWrap) barWrap.style.display = '';
-              bar.style.width = pct(s.progress_current, s.progress_total);
-            }
-          });
-          var badge = document.querySelector('tr[data-step="' + s.id + '"] [data-step-badge]');
-          if (badge) badge.textContent = s.status_display;
+      {% if next_step %}
+        <div class="panel next-step {{ next_step.tone }}">
+          <div class="panel-body">
+            <div class="kicker">Next step</div>
+            <h3>{{ next_step.title }}</h3>
+            <div class="detail">{{ next_step.detail }}</div>
+
+            {% if next_step.primary.allowed or actions %}
+              <div class="actions">
+                {% if next_step.primary.allowed %}
+                  <form method="post" action="{{ next_step.primary.url }}">
+                    {% csrf_token %}
+                    <button class="btn success block" type="submit">
+                      {{ next_step.primary.label }}
+                      {% if next_step.primary.paid %}<span class="tag">{{ next_step.primary.cost|pkr }}</span>
+                      {% else %}<span class="tag free">Free</span>{% endif %}
+                    </button>
+                  </form>
+                {% endif %}
+                {% for a in actions %}
+                  {% if a.allowed %}
+                    <form method="post" action="{% url 'videos:batch_approve' video.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="step_type" value="{{ a.step_type }}">
+                      <button class="btn {% if a.paid %}success{% else %}ghost{% endif %} block" type="submit">
+                        {{ a.label }}
+                        {% if a.paid %}<span class="tag">{{ a.cost|pkr }}</span>
+                        {% else %}<span class="tag free">Free</span>{% endif %}
+                      </button>
+                    </form>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            <div class="footnote">
+              You approve the <b>script</b> and <b>images</b> (paid) plus <b>narration</b> (free).
+              Splitting, part previews, merging and the final render run on their own.
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="panel">
+        <div class="panel-head"><h2>Premise</h2></div>
+        <div class="panel-body">
+          <p class="dim sm" style="margin:0;">{{ video.premise }}</p>
+        </div>
+      </div>
+    </aside>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var statusUrl = "{% url 'videos:status' video.pk %}";
+    var currentSig = "{{ initial_signature|escapejs }}";
+
+    function pct(cur, total) {
+      return Math.min(100, Math.round(100 * (cur || 0) / total)) + '%';
+    }
+
+    function updateSteps(steps) {
+      steps.forEach(function (s) {
+        // A step's progress widget can appear twice (part card + steps table), so
+        // update every match rather than the first.
+        document.querySelectorAll('.step-progress[data-step="' + s.id + '"]').forEach(function (w) {
+          var line = w.querySelector('[data-step-progress]');
+          if (line) {
+            var txt = s.progress_message || 'Working…';
+            if (s.progress_total) txt += ' (' + s.progress_current + '/' + s.progress_total + ')';
+            line.textContent = txt;
+          }
+          var barWrap = w.querySelector('[data-step-bar-wrap]');
+          var bar = w.querySelector('[data-step-bar]');
+          if (bar && s.progress_total) {
+            if (barWrap) barWrap.classList.remove('hidden');
+            bar.style.width = pct(s.progress_current, s.progress_total);
+          }
         });
-      }
+        var badge = document.querySelector('tr[data-step="' + s.id + '"] [data-step-badge]');
+        if (badge) badge.textContent = s.status_display;
+      });
+    }
 
-      function updateBanner(steps) {
-        var banner = document.getElementById('activity-banner');
-        if (!banner) return;
-        var running = steps.filter(function (s) { return s.status === 'running'; });
-        var queued = steps.filter(function (s) { return s.status === 'approved'; });
-        var shown = running[0] || queued[0];
-        if (!shown) { banner.style.display = 'none'; return; }
-        banner.style.display = '';
-        var extra = running.length + queued.length - 1;
-        var label = shown.label + (shown.status === 'approved' ? ' — queued' : '');
-        if (extra > 0) label += ' (+' + extra + ' more)';
-        banner.querySelector('[data-banner-label]').textContent = label;
-        var msg = shown.progress_message || 'Working…';
-        if (shown.progress_total) msg += ' (' + shown.progress_current + '/' + shown.progress_total + ')';
-        banner.querySelector('[data-banner-msg]').textContent = msg;
-        var bw = banner.querySelector('[data-banner-bar-wrap]');
-        var b = banner.querySelector('[data-banner-bar]');
-        if (shown.progress_total) { bw.style.display = ''; b.style.width = pct(shown.progress_current, shown.progress_total); }
-        else { bw.style.display = 'none'; }
+    function updateBanner(steps) {
+      var banner = document.getElementById('activity-banner');
+      if (!banner) return;
+      var running = steps.filter(function (s) { return s.status === 'running'; });
+      var queued = steps.filter(function (s) { return s.status === 'approved'; });
+      var shown = running[0] || queued[0];
+      if (!shown) { banner.classList.add('hidden'); return; }
+      banner.classList.remove('hidden');
+      var extra = running.length + queued.length - 1;
+      var label = shown.label + (shown.status === 'approved' ? ' — queued' : '');
+      if (extra > 0) label += ' (+' + extra + ' more)';
+      banner.querySelector('[data-banner-label]').textContent = label;
+      var msg = shown.progress_message || 'Working…';
+      if (shown.progress_total) msg += ' (' + shown.progress_current + '/' + shown.progress_total + ')';
+      banner.querySelector('[data-banner-msg]').textContent = msg;
+      var bw = banner.querySelector('[data-banner-bar-wrap]');
+      var b = banner.querySelector('[data-banner-bar]');
+      if (shown.progress_total) {
+        bw.classList.remove('hidden');
+        b.style.width = pct(shown.progress_current, shown.progress_total);
+      } else {
+        bw.classList.add('hidden');
       }
+    }
 
-      function tick() {
-        fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            // A signature change means steps were added/removed or finished — reload
-            // to render the new UI (audio player, images, final video, buttons).
-            if (data.signature !== currentSig) { location.reload(); return; }
-            updateSteps(data.steps);
-            updateBanner(data.steps);
-            if (data.active) setTimeout(tick, 2000);
-          })
-          .catch(function () { setTimeout(tick, 3000); });
-      }
-      // Always poll once; if something is (or becomes) active we keep going. This
-      // catches steps that auto-advance in the background (merge/render) even when
-      // the page was loaded while idle.
-      setTimeout(tick, 800);
-    })();
-  </script>
+    function tick() {
+      fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          // A signature change means a step was added, removed or finished — reload
+          // so the new UI renders (players, images, final video, buttons).
+          if (data.signature !== currentSig) { location.reload(); return; }
+          updateSteps(data.steps);
+          updateBanner(data.steps);
+          if (data.active) setTimeout(tick, 2000);
+        })
+        .catch(function () { setTimeout(tick, 3000); });
+    }
+    // Always poll once; keep going while anything is active. This catches steps
+    // that auto-advance in the background even when the page loaded idle.
+    setTimeout(tick, 800);
+  })();
+</script>
 {% endblock %}

@@ -1,18 +1,21 @@
-{% extends "base.html" %}
+{% extends "base_public.html" %}
 {% block title %}Sign in{% endblock %}
+{% block public_width %}narrow{% endblock %}
+
 {% block content %}
-  <h1>Sign in</h1>
-  <div class="card" style="max-width: 460px;">
+  <div class="auth-card">
+    <div class="auth-head">
+      <h1>Sign in</h1>
+      <p>Welcome back.</p>
+    </div>
     <form method="post" novalidate>
       {% csrf_token %}
-      {% include "accounts/_form_fields.html" %}
+      {% include "_fields.html" %}
       <input type="hidden" name="next" value="{{ next }}">
-      <div style="margin-top:20px;">
-        <button type="submit" class="btn">Sign in</button>
-      </div>
+      <button type="submit" class="btn block mt">Sign in</button>
     </form>
-    <p class="muted" style="margin-bottom:0; margin-top:16px;">
+    <div class="auth-foot">
       No account? <a href="{% url 'accounts:request' %}">Request one</a>.
-    </p>
+    </div>
   </div>
 {% endblock %}

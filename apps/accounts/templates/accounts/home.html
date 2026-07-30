@@ -1,46 +1,63 @@
-{% extends "base.html" %}
-{% block title %}AI Story Video Studio{% endblock %}
+{% extends "base_public.html" %}
+{% block title %}Long-form narrated video, one approval at a time{% endblock %}
+
 {% block content %}
   <div class="hero">
-    <h1>Long-form narrated story videos, one approval at a time</h1>
+    <span class="eyebrow"><span class="pulse"></span> Human approval before every paid call</span>
+    <h1>Long-form narrated video,<br>one approval at a time</h1>
     <p>
-      Write a 1&ndash;2 hour script from a premise, split it into parts, generate images
-      and narration, and render a finished video &mdash; with every step that spends money
-      waiting for a human to approve it first.
+      Turn a premise into a one-to-two hour script, split it into parts, generate the
+      images and narration, and render a finished video &mdash; with every step that
+      spends money waiting for someone to say yes.
     </p>
-    <a class="btn" href="{% url 'accounts:request' %}">Request an account</a>
-    <a class="btn secondary" href="{% url 'accounts:login' %}">Sign in</a>
+    <div class="hero-actions">
+      <a class="btn" href="{% url 'accounts:request' %}">Request an account</a>
+      <a class="btn ghost" href="{% url 'accounts:login' %}">Sign in</a>
+    </div>
   </div>
 
-  <div class="row" style="margin-top:36px; gap:18px;">
-    <div class="card" style="flex:1; min-width:240px;">
-      <h3 style="margin-top:0;">Templates</h3>
-      <p class="muted" style="margin-bottom:0;">
-        A template is a content identity &mdash; niche, style prompt and narrator voice.
-        Every video is generated from one, so a channel's tone stays consistent.
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="ico-box"><svg width="17" height="17" viewBox="0 0 16 16"><use href="#i-templates"/></svg></div>
+      <h3>Templates</h3>
+      <p>
+        A content identity &mdash; niche, style prompt, narrator voice. Every video is
+        generated from one, so a channel keeps its tone.
       </p>
     </div>
-    <div class="card" style="flex:1; min-width:240px;">
-      <h3 style="margin-top:0;">Approval before spend</h3>
-      <p class="muted" style="margin-bottom:0;">
+    <div class="feature">
+      <div class="ico-box"><svg width="17" height="17" viewBox="0 0 16 16"><use href="#i-money"/></svg></div>
+      <h3>Approval before spend</h3>
+      <p>
         Paid steps are created pending, with the exact payload and a cost estimate.
-        Nothing reaches a paid API until someone with permission approves it.
+        Nothing reaches a paid API until it is approved.
       </p>
     </div>
-    <div class="card" style="flex:1; min-width:240px;">
-      <h3 style="margin-top:0;">Roles you define</h3>
-      <p class="muted" style="margin-bottom:0;">
+    <div class="feature">
+      <div class="ico-box"><svg width="17" height="17" viewBox="0 0 16 16"><use href="#i-roles"/></svg></div>
+      <h3>Roles you define</h3>
+      <p>
         Each account builds its own roles. Approving spend and overriding the budget
-        cap are separate permissions, so you can let someone produce without
-        letting them exceed the cap.
+        cap are separate permissions.
+      </p>
+    </div>
+    <div class="feature">
+      <div class="ico-box"><svg width="17" height="17" viewBox="0 0 16 16"><use href="#i-film"/></svg></div>
+      <h3>Local rendering</h3>
+      <p>
+        Narration runs on your machine and FFmpeg does the render, so the only paid
+        steps are the script and the images.
       </p>
     </div>
   </div>
 
-  <div class="card" style="margin-top:18px;">
-    <p class="muted" style="margin:0;">
-      Accounts are approved by hand. Request one and a system administrator will
-      review it &mdash; you sign in with the password you chose once it is approved.
-    </p>
+  <div class="panel mt" style="margin-top:22px;">
+    <div class="panel-body tight row top">
+      <svg class="ico" width="16" height="16" viewBox="0 0 16 16" style="color:var(--text-3);flex:0 0 auto;margin-top:2px"><use href="#i-info"/></svg>
+      <p class="sm dim" style="margin:0;">
+        Accounts are approved by hand. Request one and a system administrator will
+        review it &mdash; you sign in with the password you chose once it is approved.
+      </p>
+    </div>
   </div>
 {% endblock %}

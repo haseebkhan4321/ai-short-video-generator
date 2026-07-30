@@ -1,26 +1,35 @@
-{# Name/description via the shared renderer, then the permission checkbox grid. #}
-{% include "accounts/_form_fields.html" %}
+{% comment %}
+Name and description through the shared renderer, then the permission catalog as a
+grouped checkbox grid. `permissions` is skipped above because Django's
+CheckboxSelectMultiple cannot show the per-permission help text, and that help is
+the difference between picking a permission and guessing at it.
+{% endcomment %}
+{% include "_fields.html" with skip="permissions" %}
 
-<label style="margin-top:18px;">Permissions</label>
-{% for error in form.permissions.errors %}
-  <div class="badge red" style="margin-bottom:6px;">{{ error }}</div>
-{% endfor %}
-{% for group in form.permission_groups %}
-  <div style="margin-top:12px;">
-    <div class="muted" style="font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">
-      {{ group.name }}
+<div class="field" style="margin-top:22px;">
+  <label>Permissions</label>
+  {% for error in form.permissions.errors %}
+    <div class="error">
+      <svg class="ico" width="14" height="14" viewBox="0 0 16 16" style="flex:0 0 auto;margin-top:1px"><use href="#i-alert"/></svg>
+      <span>{{ error }}</span>
     </div>
-    <div class="perm-grid">
-      {% for perm in group.permissions %}
-        <label>
-          <input type="checkbox" name="permissions" value="{{ perm.codename }}"
-                 {% if perm.checked %}checked{% endif %}>
-          <span>
-            {{ perm.label }}
-            <span class="perm-help">{{ perm.help }}</span>
-          </span>
-        </label>
-      {% endfor %}
+  {% endfor %}
+
+  {% for group in form.permission_groups %}
+    <div class="perm-group">
+      <span class="kicker">{{ group.name }}</span>
+      <div class="perm-grid">
+        {% for perm in group.permissions %}
+          <label class="check">
+            <input type="checkbox" name="permissions" value="{{ perm.codename }}"
+                   {% if perm.checked %}checked{% endif %}>
+            <span class="check-text">
+              {{ perm.label }}
+              <span class="check-help">{{ perm.help }}</span>
+            </span>
+          </label>
+        {% endfor %}
+      </div>
     </div>
-  </div>
-{% endfor %}
+  {% endfor %}
+</div>

@@ -1,39 +1,66 @@
 {% extends "base.html" %}
 {% load video_extras %}
 {% block title %}Videos{% endblock %}
-{% block content %}
-  <div class="row" style="justify-content: space-between; align-items: center;">
-    <h1>Videos</h1>
-    {% if can.video_create %}
-      <a class="btn" href="{% url 'videos:create' %}">+ New video</a>
-    {% endif %}
-  </div>
+{% block page_title %}Videos{% endblock %}
 
+{% block topbar_actions %}
+  {% if can.video_create %}
+    <a class="btn sm" href="{% url 'videos:create' %}">
+      <svg class="ico" viewBox="0 0 16 16"><use href="#i-plus"/></svg> New video
+    </a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
   {% if videos %}
-    <div class="card">
-      <table>
-        <thead>
-          <tr><th>Title</th><th>Template</th><th>Status</th><th>Target</th><th>Cost</th></tr>
-        </thead>
-        <tbody>
-          {% for video in videos %}
+    <div class="panel">
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td><a href="{% url 'videos:detail' video.pk %}">{{ video }}</a></td>
-              <td>{{ video.template.name }}</td>
-              <td><span class="badge {{ video.status|status_class }}">{{ video.get_status_display }}</span></td>
-              <td>{{ video.target_minutes }} min</td>
-              <td>{{ video.total_cost_usd|pkr }}</td>
+              <th>Video</th>
+              <th>Template</th>
+              <th>Status</th>
+              <th class="num">Target</th>
+              <th class="num">Spent</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for video in videos %}
+              <tr>
+                <td>
+                  <a class="cell-main" href="{% url 'videos:detail' video.pk %}">{{ video }}</a>
+                  <div class="cell-sub">{{ video.created_at|date:"j M Y" }}</div>
+                </td>
+                <td class="dim">{{ video.template.name }}</td>
+                <td>
+                  <span class="badge {{ video.status|status_class }}">{{ video.get_status_display }}</span>
+                </td>
+                <td class="num dim">{{ video.target_minutes }} min</td>
+                <td class="num">{{ video.total_cost_usd|pkr }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   {% else %}
-    <div class="card">
-      <p class="muted">No videos yet. Create one to start the pipeline.</p>
-      {% if can.video_create %}
-        <a class="btn" href="{% url 'videos:create' %}">+ New video</a>
-      {% endif %}
+    <div class="panel">
+      <div class="empty">
+        <div class="ico-box">
+          <svg width="20" height="20" viewBox="0 0 16 16"><use href="#i-film"/></svg>
+        </div>
+        <h3>No videos yet</h3>
+        <p>
+          Pick a template, describe the story you want, and the pipeline takes it from
+          a premise to a finished render.
+        </p>
+        {% if can.video_create %}
+          <a class="btn" href="{% url 'videos:create' %}">
+            <svg class="ico" viewBox="0 0 16 16"><use href="#i-plus"/></svg> New video
+          </a>
+        {% endif %}
+      </div>
     </div>
   {% endif %}
 {% endblock %}

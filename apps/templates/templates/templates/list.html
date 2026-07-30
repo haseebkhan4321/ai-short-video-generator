@@ -1,45 +1,73 @@
 {% extends "base.html" %}
 {% load video_extras %}
 {% block title %}Templates{% endblock %}
-{% block content %}
-  <div class="row" style="justify-content: space-between; align-items: center;">
-    <h1>Templates</h1>
-    {% if can.template_manage %}
-      <a class="btn" href="{% url 'templates:create' %}">+ New template</a>
-    {% endif %}
-  </div>
+{% block page_title %}Templates{% endblock %}
 
+{% block topbar_actions %}
+  {% if can.template_manage %}
+    <a class="btn sm" href="{% url 'templates:create' %}">
+      <svg class="ico" viewBox="0 0 16 16"><use href="#i-plus"/></svg> New template
+    </a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
   {% if templates %}
-    <div class="card">
-      <table>
-        <thead>
-          <tr><th>Name</th><th>Niche</th><th>Voice</th><th>Language</th><th>Videos</th><th>Spent</th><th></th></tr>
-        </thead>
-        <tbody>
-          {% for template in templates %}
+    <div class="panel">
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td><a href="{% url 'templates:detail' template.pk %}">{{ template.name }}</a></td>
-              <td>{{ template.niche|default:"—" }}</td>
-              <td>{{ template.narrator_voice|default:"—" }}</td>
-              <td>{{ template.language }}</td>
-              <td>{{ template.video_count }}</td>
-              <td>{{ template.total_cost|pkr }}</td>
-              <td>
-                {% if can.template_manage %}
-                  <a href="{% url 'templates:edit' template.pk %}">Edit</a>
-                {% endif %}
-              </td>
+              <th>Template</th>
+              <th>Niche</th>
+              <th>Voice</th>
+              <th>Language</th>
+              <th class="num">Videos</th>
+              <th class="num">Spent</th>
+              <th class="actions"></th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for template in templates %}
+              <tr>
+                <td>
+                  <a class="cell-main" href="{% url 'templates:detail' template.pk %}">{{ template.name }}</a>
+                  {% if template.description %}
+                    <div class="cell-sub">{{ template.description|truncatechars:64 }}</div>
+                  {% endif %}
+                </td>
+                <td>{% if template.niche %}<span class="badge plain">{{ template.niche }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+                <td class="dim">{{ template.narrator_voice|default:"default" }}</td>
+                <td class="dim">{{ template.language }}</td>
+                <td class="num">{{ template.video_count }}</td>
+                <td class="num">{{ template.total_cost|pkr }}</td>
+                <td class="actions">
+                  {% if can.template_manage %}
+                    <a class="btn quiet sm" href="{% url 'templates:edit' template.pk %}">Edit</a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   {% else %}
-    <div class="card">
-      <p class="muted">No templates yet. Create one to start generating videos.</p>
-      {% if can.template_manage %}
-        <a class="btn" href="{% url 'templates:create' %}">+ New template</a>
-      {% endif %}
+    <div class="panel">
+      <div class="empty">
+        <div class="ico-box"><svg width="20" height="20" viewBox="0 0 16 16"><use href="#i-templates"/></svg></div>
+        <h3>No templates yet</h3>
+        <p>
+          A template is a content identity: a niche, a style prompt and a narrator
+          voice. Every video is generated from one, which is what keeps a channel's
+          tone consistent.
+        </p>
+        {% if can.template_manage %}
+          <a class="btn" href="{% url 'templates:create' %}">
+            <svg class="ico" viewBox="0 0 16 16"><use href="#i-plus"/></svg> New template
+          </a>
+        {% endif %}
+      </div>
     </div>
   {% endif %}
 {% endblock %}

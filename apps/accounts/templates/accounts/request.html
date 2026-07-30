@@ -1,19 +1,23 @@
-{% extends "base.html" %}
+{% extends "base_public.html" %}
 {% block title %}Request an account{% endblock %}
+
 {% block content %}
-  <h1>Request an account</h1>
-  <div class="card" style="max-width: 560px;">
-    <p class="muted">
-      A system administrator reviews every request. Choose your password now &mdash;
-      once your request is approved you sign in with it directly.
-    </p>
+  {# Wider than the sign-in card: this form has six fields, not two. #}
+  <div class="auth-card" style="max-width:520px;margin:0 auto;">
+    <div class="auth-head">
+      <h1>Request an account</h1>
+      <p>
+        A system administrator reviews every request. Choose your password now &mdash;
+        once approved you sign in with it directly.
+      </p>
+    </div>
     <form method="post" novalidate>
       {% csrf_token %}
-      {% include "accounts/_form_fields.html" %}
-      <div style="margin-top:20px;">
-        <button type="submit" class="btn">Send request</button>
-        <a class="btn secondary" href="{% url 'accounts:home' %}">Cancel</a>
-      </div>
+      {% include "_fields.html" %}
+      <button type="submit" class="btn block mt">Send request</button>
     </form>
+    <div class="auth-foot">
+      Already have an account? <a href="{% url 'accounts:login' %}">Sign in</a>.
+    </div>
   </div>
 {% endblock %}
