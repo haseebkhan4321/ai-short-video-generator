@@ -2182,7 +2182,88 @@ details.reveal > .reveal-body {
 }
 
 /* --------------------------------------------------------------------------
-   16. Utilities
+   16. Glowing pointer
+   --------------------------------------------------------------------------
+   A soft light that trails the cursor. Deliberately *additional* to the native
+   cursor rather than a replacement: hiding the OS cursor to draw your own costs
+   real usability (lag, wrong affordances, nothing to fall back on) for very little
+   in return.
+
+   `mix-blend-mode: screen` means it lightens what it passes over instead of
+   covering it, and `pointer-events: none` means it can never intercept a click even
+   at this z-index. It is created by JS only on a device with a fine pointer, and
+   never when reduced motion is asked for.
+   -------------------------------------------------------------------------- */
+
+.pointer-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    circle,
+    rgba(150, 176, 255, 0.85) 0%,
+    rgba(108, 140, 255, 0.45) 38%,
+    rgba(55, 213, 224, 0.14) 66%,
+    transparent 72%
+  );
+  filter: blur(3px);
+  opacity: 0;
+  transition: opacity 260ms var(--ease), width 200ms var(--ease),
+    height 200ms var(--ease), margin 200ms var(--ease);
+  will-change: transform;
+}
+
+.pointer-glow.on {
+  opacity: 0.85;
+}
+
+/* Bigger and brighter over anything clickable, so the glow doubles as a hit hint. */
+.pointer-glow.hot {
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  opacity: 1;
+}
+
+/* A second, much larger and fainter aura. Slower to follow, which is what reads as
+   a trail rather than a sticker glued to the cursor. */
+.pointer-aura {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 420px;
+  height: 420px;
+  margin: -210px 0 0 -210px;
+  border-radius: 50%;
+  pointer-events: none;
+  /* Screen, like the dot: the aura is created last so it paints above the panels,
+     and lightening them is fine where covering them would cost text contrast. */
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    circle,
+    rgba(108, 140, 255, 0.13) 0%,
+    rgba(55, 213, 224, 0.05) 45%,
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 500ms var(--ease);
+  will-change: transform;
+}
+
+.pointer-aura.on {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   17. Utilities
    -------------------------------------------------------------------------- */
 
 .muted {
@@ -2276,7 +2357,7 @@ details.reveal > .reveal-body {
 }
 
 /* --------------------------------------------------------------------------
-   17. Motion
+   18. Motion
    -------------------------------------------------------------------------- */
 
 @keyframes spin {

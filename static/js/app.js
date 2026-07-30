@@ -148,6 +148,84 @@
     });
   })();
 
+  /* ---- Glowing pointer ------------------------------------------------- */
+
+  // A light that follows the cursor, plus a larger aura that lags behind it. The
+  // lag is what reads as a trail rather than a sticker glued to the pointer.
+  //
+  // Built here rather than in the HTML so it simply does not exist on a device that
+  // cannot use it: no fine pointer (touch), or reduced motion asked for. Both are
+  // checked once, up front, because this runs on every frame the mouse moves.
+  (function pointerGlow() {
+    var fine = window.matchMedia('(hover: hover) and (pointer: fine)');
+    var still = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (!fine.matches || still.matches) return;
+
+    var dot = document.createElement('div');
+    dot.className = 'pointer-glow';
+    var aura = document.createElement('div');
+    aura.className = 'pointer-aura';
+    document.body.append(aura, dot);
+
+    var target = { x: -300, y: -300 };
+    var slow = { x: -300, y: -300 };
+    var moved = false;
+    var frame = null;
+
+    function render() {
+      // Ease the aura toward the cursor; the dot tracks it exactly.
+      slow.x += (target.x - slow.x) * 0.12;
+      slow.y += (target.y - slow.y) * 0.12;
+      dot.style.transform = 'translate3d(' + target.x + 'px,' + target.y + 'px,0)';
+      aura.style.transform = 'translate3d(' + slow.x + 'px,' + slow.y + 'px,0)';
+
+      // Keep going only while the aura is still catching up, so an idle mouse costs
+      // nothing.
+      if (Math.abs(target.x - slow.x) > 0.4 || Math.abs(target.y - slow.y) > 0.4) {
+        frame = requestAnimationFrame(render);
+      } else {
+        frame = null;
+      }
+    }
+
+    function tick() {
+      if (frame === null) frame = requestAnimationFrame(render);
+    }
+
+    document.addEventListener('mousemove', function (e) {
+      target.x = e.clientX;
+      target.y = e.clientY;
+      if (!moved) {
+        moved = true;
+        // Start the aura where the cursor is, so it does not fly in from a corner.
+        slow.x = target.x;
+        slow.y = target.y;
+        dot.classList.add('on');
+        aura.classList.add('on');
+      }
+      // SVG and other non-HTML targets still implement closest(), but guard anyway
+      // so a stray non-element target cannot throw on every frame.
+      var over = e.target instanceof Element
+        ? e.target.closest('a, button, [role="button"], summary, input, select, textarea')
+        : null;
+      dot.classList.toggle('hot', !!over);
+      tick();
+    }, { passive: true });
+
+    // Fade out when the pointer leaves the window, so it does not sit frozen at the
+    // edge of the page.
+    document.addEventListener('mouseleave', function () {
+      dot.classList.remove('on', 'hot');
+      aura.classList.remove('on');
+    });
+    document.addEventListener('mouseenter', function () {
+      if (moved) {
+        dot.classList.add('on');
+        aura.classList.add('on');
+      }
+    });
+  })();
+
   /* ---- Destructive confirmations --------------------------------------- */
 
   (function confirmations() {
