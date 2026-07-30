@@ -40,6 +40,11 @@ class UserRepository:
     def system_admins():
         return User.objects.filter(is_system_admin=True, is_active=True)
 
+    @staticmethod
+    def with_email_domain(domain):
+        """Used by the development seeder's teardown to find only its own users."""
+        return User.objects.filter(email__iendswith=f"@{domain}")
+
 
 class AccountRepository:
     @staticmethod
@@ -53,6 +58,12 @@ class AccountRepository:
     @staticmethod
     def get_by_slug(slug):
         return Account.objects.filter(slug=slug).first()
+
+    @staticmethod
+    def get_by_name(name):
+        """Name, not slug: ``Account.unique_slug`` suffixes a taken slug, so a
+        slug lookup would miss an existing account and the seeders would duplicate it."""
+        return Account.objects.filter(name=name).first()
 
     @staticmethod
     def create(**fields):
@@ -107,6 +118,10 @@ class RoleRepository:
         role.delete()
 
     @staticmethod
+    def delete_for_account(account):
+        Role.objects.filter(account=account).delete()
+
+    @staticmethod
     def is_in_use(role):
         return role.memberships.exists()
 
@@ -120,11 +135,18 @@ class MembershipRepository:
 
     @staticmethod
     def for_user(user):
+        """Only the memberships that actually grant something — used for the switcher
+        and for resolving the active account."""
         return (
             Membership.objects.filter(user=user, is_active=True, account__is_active=True)
             .select_related("account", "role")
             .order_by("account__name")
         )
+
+    @staticmethod
+    def all_for_user(user):
+        """Every membership, active or not. For administration and teardown."""
+        return Membership.objects.filter(user=user).select_related("account", "role")
 
     @staticmethod
     def get(user, account):

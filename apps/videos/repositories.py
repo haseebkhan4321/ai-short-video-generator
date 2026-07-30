@@ -35,6 +35,11 @@ class VideoRepository:
         )
 
     @staticmethod
+    def get_by_premise(template, premise):
+        """Used by the seeders to stay idempotent — a video has no natural key."""
+        return Video.objects.filter(template=template, premise=premise).first()
+
+    @staticmethod
     def create(**fields):
         return Video.objects.create(**fields)
 

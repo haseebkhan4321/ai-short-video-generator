@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.templates",
     "apps.videos",
+    # Seeders. An app only so its management commands are discovered; it has no models.
+    "seeders",
 ]
 
 MIDDLEWARE = [

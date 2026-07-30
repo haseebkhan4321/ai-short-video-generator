@@ -11,7 +11,8 @@ between the accounts they hold a role in. Approving spend and exceeding the budg
 cap are separate permissions.
 
 See [`docs/phase-1-plan.md`](docs/phase-1-plan.md) for the full plan,
-[`docs/rbac.md`](docs/rbac.md) for the access-control model, and
+[`docs/rbac.md`](docs/rbac.md) for the access-control model,
+[`docs/seeders.md`](docs/seeders.md) for the seeders, and
 [`docs/chatgpt-conversation-readout.md`](docs/chatgpt-conversation-readout.md) for
 the original brief.
 
@@ -38,22 +39,22 @@ copy .env.example .env       # then edit values (API keys optional until you gen
 #    mysql -u root -e "CREATE DATABASE ai_shorts CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 .venv\Scripts\python manage.py migrate
 
-# 4. First system administrator + their account (required — every page needs a login)
-.venv\Scripts\python manage.py bootstrap_rbac --email you@example.com --account "My Studio"
+# 4. Seed. Required — every page needs a login, so this is the only way in.
+#    Development: demo accounts, a user per role, and a video at every pipeline stage
+.venv\Scripts\python manage.py seed_development
+#    Production: default roles + the first system administrator, no demo data
+.venv\Scripts\python manage.py seed_production --email you@example.com --account "My Studio"
 
-# 5. Starter templates for that account (optional)
-.venv\Scripts\python manage.py seed_templates --account my-studio
-
-# 6. Run
+# 5. Run
 .venv\Scripts\python manage.py runserver
 ```
 
 Open http://127.0.0.1:8000/ for the public landing page, then sign in at
 `/accounts/login/`. System console at `/console/`, Django admin at `/admin/`.
 
-`bootstrap_rbac` is idempotent and is the only way in after a fresh `migrate`:
-nothing is reachable anonymously and accounts are created by an administrator. See
-[`docs/rbac.md`](docs/rbac.md).
+`seed_development` prints the accounts it created and their shared password. Both
+seeders are idempotent; `seed_development --fresh` rebuilds its own demo data. See
+[`docs/seeders.md`](docs/seeders.md) and [`docs/rbac.md`](docs/rbac.md).
 
 ## Layout
 
@@ -65,9 +66,10 @@ apps/accounts/     User/Account/Role/Membership/AccountRequest, the permission
 apps/templates/    Template model (the content identity, formerly Profile)
 apps/videos/       Video/Chapter/ChapterImage/GenerationStep/ApiCallLog,
                    repositories, services/, integrations/
+seeders/           Production + development seeders and their commands
 media/             Generated assets (gitignored)
 assets/            Music + fonts (user-supplied)
-docs/              Plan, RBAC model, brief
+docs/              Plan, RBAC model, seeders, brief
 ```
 
 ## Architecture rules
@@ -87,8 +89,9 @@ docs/              Plan, RBAC model, brief
 .venv\Scripts\python manage.py test
 ```
 
-88 tests covering permission resolution, account isolation, the two spend gates, and
-the account-request flow. Plain `django.test.TestCase` — no extra dependency.
+124 tests covering permission resolution, account isolation, the two spend gates, the
+account-request flow, and the seeders. Plain `django.test.TestCase` — no extra
+dependency.
 
 ## Build status
 

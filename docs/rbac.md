@@ -143,13 +143,17 @@ After a fresh `migrate` there is no way in: every page needs a login and every
 account is created by an administrator.
 
 ```bash
-python manage.py bootstrap_rbac --email you@example.com --account "My Studio"
+python manage.py seed_production --email you@example.com --account "My Studio"
 python manage.py seed_templates --account my-studio
 ```
 
-`bootstrap_rbac` is idempotent. It seeds the three default roles, creates the first
+`seed_production` is idempotent. It seeds the three default roles, creates the first
 system administrator, and gives them an account with an Owner membership.
 `--roles-only` seeds just the roles.
+
+For local work, `python manage.py seed_development` does all that plus demo accounts,
+a user per role, and a video at every pipeline stage. See
+[`seeders.md`](seeders.md).
 
 ## Route map
 
@@ -211,11 +215,12 @@ immediately — only public self-service requests need approval. They are flagge
 
 ## Tests
 
-88 tests, `python manage.py test`, plain `django.test.TestCase` and
+124 tests, `python manage.py test`, plain `django.test.TestCase` and
 `django.test.Client` — no extra dependency.
 
 | Module | Covers |
 |---|---|
+| `seeders/tests/test_seeders.py` | both seeders: idempotency, the DEBUG guard, `--fresh` scope, fixture invariants |
 | `apps/accounts/tests/test_access.py` | permission resolution, system-admin bypass, switching, inactive users and memberships |
 | `apps/accounts/tests/test_requests.py` | request → cannot sign in → approve → Owner; rejection; double review |
 | `apps/accounts/tests/test_user_management.py` | privilege escalation, last administrator, owner protection, role lifecycle |
