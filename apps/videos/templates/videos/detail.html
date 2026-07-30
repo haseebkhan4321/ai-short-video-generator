@@ -8,7 +8,7 @@
     <div style="min-width:0; flex:1;">
       <h1 style="margin:0 0 4px; overflow-wrap:anywhere;">{{ video.title|default:video.premise|truncatechars:80 }}</h1>
       <div class="muted" style="margin-bottom:10px;">
-        Profile: <a href="{% url 'profiles:detail' video.profile.pk %}">{{ video.profile.name }}</a>
+        Template: <a href="{% url 'templates:detail' video.template.pk %}">{{ video.template.name }}</a>
         {% if video.status == "completed" %}&nbsp;·&nbsp; <span class="badge green">Completed</span>{% endif %}
         {% if video.status == "failed" %}&nbsp;·&nbsp; <span class="badge red">Failed</span>{% endif %}
       </div>
@@ -19,7 +19,9 @@
         {% endfor %}
       </div>
     </div>
-    <a class="btn secondary" style="flex:0 0 auto;" href="{% url 'videos:delete' video.pk %}">Delete</a>
+    {% if can.video_delete %}
+      <a class="btn secondary" style="flex:0 0 auto;" href="{% url 'videos:delete' video.pk %}">Delete</a>
+    {% endif %}
   </div>
 
   {% if video.error_message and video.status == "failed" %}
@@ -75,9 +77,9 @@
           <h3 style="margin:4px 0 6px;">{{ next_step.title }}</h3>
           <div class="muted" style="font-size:14px;">{{ next_step.detail }}</div>
         </div>
-        {% if next_step.primary or actions %}
+        {% if next_step.primary.allowed or actions %}
           <div style="display:flex; flex-direction:column; gap:8px; flex:0 0 auto;">
-            {% if next_step.primary %}
+            {% if next_step.primary.allowed %}
               <form method="post" action="{{ next_step.primary.url }}">
                 {% csrf_token %}
                 <button class="btn green" type="submit">
@@ -87,14 +89,16 @@
               </form>
             {% endif %}
             {% for a in actions %}
-              <form method="post" action="{% url 'videos:batch_approve' video.pk %}">
-                {% csrf_token %}
-                <input type="hidden" name="step_type" value="{{ a.step_type }}">
-                <button class="btn {% if a.paid %}green{% else %}secondary{% endif %}" type="submit">
-                  {{ a.label }}
-                  {% if a.paid %}<span class="cost-tag">{{ a.cost|pkr }}</span>{% else %}<span class="cost-tag free">Free</span>{% endif %}
-                </button>
-              </form>
+              {% if a.allowed %}
+                <form method="post" action="{% url 'videos:batch_approve' video.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="step_type" value="{{ a.step_type }}">
+                  <button class="btn {% if a.paid %}green{% else %}secondary{% endif %}" type="submit">
+                    {{ a.label }}
+                    {% if a.paid %}<span class="cost-tag">{{ a.cost|pkr }}</span>{% else %}<span class="cost-tag free">Free</span>{% endif %}
+                  </button>
+                </form>
+              {% endif %}
             {% endfor %}
           </div>
         {% endif %}
@@ -142,7 +146,7 @@
             <span class="badge {{ part.narration_step.status|step_status_class }}">{{ part.narration_step.get_status_display }}</span>
           {% else %}<span class="muted">—</span>{% endif %}
 
-          {% if part.pending_count %}
+          {% if part.pending_count and part.may_approve %}
             <form class="inline-form" method="post" action="{% url 'videos:part_approve' video.pk chapter.pk %}" style="margin-left:auto;">
               {% csrf_token %}
               <button type="submit" class="btn green">
@@ -219,6 +223,9 @@
               <td>
                 {{ step.get_step_type_display }}
                 {% if step.chapter_id %}<span class="muted">(part {{ step.chapter.chapter_number }})</span>{% endif %}
+                {% if step.approved_by %}
+                  <div class="muted" style="font-size:12px;">approved by {{ step.approved_by.display_name }}</div>
+                {% endif %}
               </td>
               <td>{{ step.get_provider_display }}</td>
               <td>
@@ -229,27 +236,40 @@
               <td>{% if step.actual_cost_usd is not None %}{{ step.actual_cost_usd|pkr }}{% else %}—{% endif %}</td>
               <td>
                 {% if step.status == "pending_approval" %}
-                  <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
-                    {% csrf_token %}
-                    <button type="submit" class="btn green">Approve</button>
-                  </form>
-                  <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="force" value="1">
-                    <button type="submit" class="btn secondary" title="Ignore budget cap">Approve anyway</button>
-                  </form>
-                  <form class="inline-form" method="post" action="{% url 'videos:step_reject' video.pk step.pk %}">
-                    {% csrf_token %}
-                    <button type="submit" class="btn red">Reject</button>
-                  </form>
+                  {% if step.may_approve %}
+                    <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn green">Approve</button>
+                    </form>
+                    {% if can.step_override_budget %}
+                      <form class="inline-form" method="post" action="{% url 'videos:step_approve' video.pk step.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="force" value="1">
+                        <button type="submit" class="btn secondary" title="Ignore budget cap">Approve anyway</button>
+                      </form>
+                    {% endif %}
+                  {% endif %}
+                  {% if can.step_reject %}
+                    <form class="inline-form" method="post" action="{% url 'videos:step_reject' video.pk step.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn red">Reject</button>
+                    </form>
+                  {% endif %}
+                  {% if not step.may_approve and not can.step_reject %}
+                    <span class="muted">Awaiting approval</span>
+                  {% endif %}
                 {% elif step.status == "rejected" or step.status == "failed" %}
-                  <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}">
-                    {% csrf_token %}
-                    <button type="submit" class="btn secondary">Retry</button>
-                  </form>
+                  {% if can.step_regenerate %}
+                    <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn secondary">Retry</button>
+                    </form>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
                 {% elif step.status == "approved" or step.status == "running" %}
                   {% include "videos/_step_progress.html" with step=step %}
-                {% elif step.status == "completed" and step.provider != "local" %}
+                {% elif step.status == "completed" and step.provider != "local" and can.step_regenerate %}
                   <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}"
                         onsubmit="return confirm('Regenerate {{ step.get_step_type_display }}? This creates a new pending step you must approve (it will cost again).');">
                     {% csrf_token %}

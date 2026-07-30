@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}All accounts{% endblock %}
+{% block content %}
+  {% include "accounts/console/_nav.html" %}
+  <h1>All accounts</h1>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Account</th><th>Owner</th><th>Status</th><th>Templates</th><th>Users</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for a in accounts %}
+          <tr>
+            <td>
+              {{ a.name }}
+              <div class="muted" style="font-size:12px;">{{ a.slug }}</div>
+            </td>
+            <td>{{ a.owner.display_name }}</td>
+            <td>
+              {% if a.is_active %}<span class="badge green">Active</span>
+              {% else %}<span class="badge red">Disabled</span>{% endif %}
+            </td>
+            <td>{{ a.content_templates.count }}</td>
+            <td>{{ a.memberships.count }}</td>
+            <td style="white-space:nowrap;">
+              <form class="inline-form" method="post" action="{% url 'console:account_enter' a.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn secondary">Enter</button>
+              </form>
+              <form class="inline-form" method="post" action="{% url 'console:account_toggle' a.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn {% if a.is_active %}red{% else %}green{% endif %}">
+                  {% if a.is_active %}Disable{% else %}Enable{% endif %}
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="muted">No accounts yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="muted" style="font-size:13px;">
+    &ldquo;Enter&rdquo; switches your session into that account so you can work inside it
+    with full permissions.
+  </p>
+{% endblock %}

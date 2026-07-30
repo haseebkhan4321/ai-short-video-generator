@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Edit default role {{ role.name }}{% endblock %}
+{% block content %}
+  {% include "accounts/console/_nav.html" %}
+  <p><a href="{% url 'console:default_roles' %}">&larr; Default roles</a></p>
+  <h1>Edit default role</h1>
+
+  <div class="card">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% include "accounts/_role_fields.html" %}
+      <div style="margin-top:22px;">
+        <button type="submit" class="btn">Save</button>
+        <a class="btn secondary" href="{% url 'console:default_roles' %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

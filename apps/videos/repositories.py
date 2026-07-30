@@ -6,19 +6,33 @@ from .models import ApiCallLog, Chapter, ChapterImage, GenerationStep, Video
 class VideoRepository:
     @staticmethod
     def all():
-        return Video.objects.select_related("profile").all()
+        return Video.objects.select_related("template").all()
 
     @staticmethod
-    def for_profile(profile_id):
-        return Video.objects.filter(profile_id=profile_id)
+    def for_account(account):
+        """Account-scoped queryset. Videos have no account column of their own —
+        they inherit it through their template."""
+        return Video.objects.filter(template__account=account).select_related("template")
+
+    @staticmethod
+    def for_template(template_id):
+        return Video.objects.filter(template_id=template_id)
 
     @staticmethod
     def get(video_id):
-        return Video.objects.select_related("profile").get(pk=video_id)
+        return Video.objects.select_related("template").get(pk=video_id)
 
     @staticmethod
     def get_or_none(video_id):
-        return Video.objects.filter(pk=video_id).select_related("profile").first()
+        return Video.objects.filter(pk=video_id).select_related("template").first()
+
+    @staticmethod
+    def get_in_account(video_id, account):
+        return (
+            Video.objects.filter(pk=video_id, template__account=account)
+            .select_related("template")
+            .first()
+        )
 
     @staticmethod
     def create(**fields):
@@ -87,6 +101,16 @@ class StepRepository:
     @staticmethod
     def get(step_id):
         return GenerationStep.objects.select_related("video", "chapter").get(pk=step_id)
+
+    @staticmethod
+    def get_in_video(step_id, video_id):
+        """A step is only addressable through its own video. Without this the
+        ``video_id`` in a step URL is decorative and any step id would resolve."""
+        return (
+            GenerationStep.objects.filter(pk=step_id, video_id=video_id)
+            .select_related("video", "video__template", "chapter")
+            .first()
+        )
 
     @staticmethod
     def create(**fields):

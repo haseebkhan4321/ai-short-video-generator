@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}AI Story Video Studio{% endblock %}
+{% block content %}
+  <div class="hero">
+    <h1>Long-form narrated story videos, one approval at a time</h1>
+    <p>
+      Write a 1&ndash;2 hour script from a premise, split it into parts, generate images
+      and narration, and render a finished video &mdash; with every step that spends money
+      waiting for a human to approve it first.
+    </p>
+    <a class="btn" href="{% url 'accounts:request' %}">Request an account</a>
+    <a class="btn secondary" href="{% url 'accounts:login' %}">Sign in</a>
+  </div>
+
+  <div class="row" style="margin-top:36px; gap:18px;">
+    <div class="card" style="flex:1; min-width:240px;">
+      <h3 style="margin-top:0;">Templates</h3>
+      <p class="muted" style="margin-bottom:0;">
+        A template is a content identity &mdash; niche, style prompt and narrator voice.
+        Every video is generated from one, so a channel's tone stays consistent.
+      </p>
+    </div>
+    <div class="card" style="flex:1; min-width:240px;">
+      <h3 style="margin-top:0;">Approval before spend</h3>
+      <p class="muted" style="margin-bottom:0;">
+        Paid steps are created pending, with the exact payload and a cost estimate.
+        Nothing reaches a paid API until someone with permission approves it.
+      </p>
+    </div>
+    <div class="card" style="flex:1; min-width:240px;">
+      <h3 style="margin-top:0;">Roles you define</h3>
+      <p class="muted" style="margin-bottom:0;">
+        Each account builds its own roles. Approving spend and overriding the budget
+        cap are separate permissions, so you can let someone produce without
+        letting them exceed the cap.
+      </p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px;">
+    <p class="muted" style="margin:0;">
+      Accounts are approved by hand. Request one and a system administrator will
+      review it &mdash; you sign in with the password you chose once it is approved.
+    </p>
+  </div>
+{% endblock %}

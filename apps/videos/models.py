@@ -1,6 +1,7 @@
+from django.conf import settings
 from django.db import models
 
-from apps.profiles.models import Profile
+from apps.templates.models import Template
 
 
 class VideoStatus(models.TextChoices):
@@ -43,8 +44,15 @@ class Provider(models.TextChoices):
 class Video(models.Model):
     """One long-form continuous story (1-2 hours), rendered to a single MP4."""
 
-    profile = models.ForeignKey(
-        Profile, on_delete=models.CASCADE, related_name="videos"
+    template = models.ForeignKey(
+        Template, on_delete=models.CASCADE, related_name="videos"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_videos",
     )
     premise = models.TextField(help_text="User-entered premise/topic for the story.")
     target_minutes = models.PositiveIntegerField(default=90)
@@ -163,6 +171,14 @@ class GenerationStep(models.Model):
     )
     error_message = models.TextField(blank=True)
 
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_steps",
+        help_text="Who authorized this step. The audit trail for spend.",
+    )
     approved_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)

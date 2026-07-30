@@ -1,0 +1,26 @@
+{# Name/description via the shared renderer, then the permission checkbox grid. #}
+{% include "accounts/_form_fields.html" %}
+
+<label style="margin-top:18px;">Permissions</label>
+{% for error in form.permissions.errors %}
+  <div class="badge red" style="margin-bottom:6px;">{{ error }}</div>
+{% endfor %}
+{% for group in form.permission_groups %}
+  <div style="margin-top:12px;">
+    <div class="muted" style="font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">
+      {{ group.name }}
+    </div>
+    <div class="perm-grid">
+      {% for perm in group.permissions %}
+        <label>
+          <input type="checkbox" name="permissions" value="{{ perm.codename }}"
+                 {% if perm.checked %}checked{% endif %}>
+          <span>
+            {{ perm.label }}
+            <span class="perm-help">{{ perm.help }}</span>
+          </span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+{% endfor %}

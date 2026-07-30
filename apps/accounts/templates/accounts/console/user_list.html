@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}All users{% endblock %}
+{% block content %}
+  {% include "accounts/console/_nav.html" %}
+  <h1>All users</h1>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>User</th><th>Status</th><th>Accounts</th><th></th></tr></thead>
+      <tbody>
+        {% for u in users %}
+          <tr>
+            <td>
+              {{ u.display_name }}
+              <div class="muted" style="font-size:12px;">{{ u.email }}</div>
+            </td>
+            <td>
+              {% if u.is_active %}<span class="badge green">Active</span>
+              {% else %}<span class="badge red">Inactive</span>{% endif %}
+              {% if u.is_system_admin %}<span class="badge accent">System admin</span>{% endif %}
+              {% if u.must_change_password %}<span class="badge amber">Must change password</span>{% endif %}
+            </td>
+            <td class="muted" style="font-size:12px;">
+              {% for m in u.memberships.all %}
+                {{ m.account.name }} ({{ m.role.name }}){% if not forloop.last %}, {% endif %}
+              {% empty %}—{% endfor %}
+            </td>
+            <td><a href="{% url 'console:user_detail' u.pk %}">Manage</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

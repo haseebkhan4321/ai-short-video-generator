@@ -2,9 +2,13 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+
+from apps.accounts.access import Perm, account_required, has_perm, requires_perm
+from apps.accounts.permissions import LABELS as PERM_LABELS
 
 from .forms import VideoCreateForm
 from .models import StepStatus, StepType, VideoStatus
@@ -20,20 +24,97 @@ from .services.video_service import VideoService
 ACTIVE_STEP_STATUSES = {StepStatus.APPROVED, StepStatus.RUNNING}
 
 
+def _get_video_or_404(request, video_id):
+    """Account-scoped video lookup.
+
+    A video in another account raises 404 rather than 403, so its existence is not
+    observable from outside the account.
+    """
+    video = VideoService.get_video(video_id, request.account)
+    if video is None:
+        raise Http404("Video not found")
+    return video
+
+
+def _get_step_or_404(request, video_id, step_id):
+    """Resolve a step through both its video and the active account.
+
+    The step id alone is not enough: without the ``video_id`` check the path
+    segment would be decorative and any step in any account would resolve.
+    """
+    video = _get_video_or_404(request, video_id)
+    step = VideoService.get_step(step_id, video.pk)
+    if step is None:
+        raise Http404("Step not found")
+    return video, step
+
+
+def _approval_perm_for(step):
+    """Paid steps need the spend permission; free ones only need to be runnable."""
+    return Perm.STEP_APPROVE_PAID if step.is_paid else Perm.STEP_RUN_FREE
+
+
+def _batch_perm(pending_steps):
+    """The permission a batch needs: the spend one if any step in it costs money."""
+    if any(step.is_paid for step in pending_steps):
+        return Perm.STEP_APPROVE_PAID
+    return Perm.STEP_RUN_FREE
+
+
+def _may_approve_paid(request, is_paid):
+    return has_perm(request, Perm.STEP_APPROVE_PAID if is_paid
+                    else Perm.STEP_RUN_FREE)
+
+
+def _may_approve(request, pending_steps):
+    if not pending_steps:
+        return False
+    return has_perm(request, _batch_perm(pending_steps))
+
+
+def _require(request, codename):
+    if not has_perm(request, codename):
+        raise PermissionDenied(
+            f"You do not have permission to do this ({PERM_LABELS.get(codename, codename)})."
+        )
+
+
+def _budget_hint(request, exc, override_label):
+    """Only mention the override to someone who actually has it."""
+    if has_perm(request, Perm.STEP_OVERRIDE_BUDGET):
+        return f"{exc} Use '{override_label}' to override."
+    return f"{exc} Ask someone who can override the budget cap."
+
+
+def _allowed_force(request):
+    """Honour ``force=1`` only for someone who may exceed the budget cap.
+
+    The flag arrives in POST data, so it is a request, not a fact. Trusting it
+    directly is what let any caller bypass MAX_COST_PER_VIDEO.
+    """
+    return (
+        request.POST.get("force") == "1"
+        and has_perm(request, Perm.STEP_OVERRIDE_BUDGET)
+    )
+
+
+@requires_perm(Perm.VIDEO_VIEW)
 def video_list(request):
-    videos = VideoService.list_videos()
+    videos = VideoService.list_videos(request.account)
     return render(request, "videos/list.html", {"videos": videos})
 
 
+@requires_perm(Perm.VIDEO_CREATE)
 def video_create(request):
     if request.method == "POST":
-        form = VideoCreateForm(request.POST)
+        form = VideoCreateForm(request.POST, account=request.account)
         if form.is_valid():
             data = form.cleaned_data
             video = PipelineService.create_video(
-                profile=data["profile"],
+                template=data["template"],
                 premise=data["premise"],
                 target_minutes=data["target_minutes"],
+                actor=request.user,
             )
             messages.success(
                 request,
@@ -41,7 +122,9 @@ def video_create(request):
             )
             return redirect(reverse("videos:detail", args=[video.pk]))
     else:
-        form = VideoCreateForm(default_minutes=settings.DEFAULT_TARGET_MINUTES)
+        form = VideoCreateForm(
+            account=request.account, default_minutes=settings.DEFAULT_TARGET_MINUTES
+        )
     return render(request, "videos/form.html", {"form": form})
 
 
@@ -165,21 +248,27 @@ def _compute_next_step(video, parts, steps, has_active, actions):
             "detail": "All parts are done. Merging and the final render run automatically."}
 
 
+@requires_perm(Perm.VIDEO_VIEW)
 def video_detail(request, video_id):
-    video = VideoService.get_video(video_id)
-    if video is None:
-        raise Http404("Video not found")
+    video = _get_video_or_404(request, video_id)
 
-    # Backfill any missing per-part steps (old splits / part-by-part flow), then
-    # kick any step left waiting (e.g. a free step whose executor now exists).
-    PipelineService.ensure_asset_steps(video)
-    # Create any missing part-preview steps first, then let resume_waiting_steps be
-    # the single runner that claims and executes all APPROVED steps.
-    PipelineService.backfill_part_videos(video)
-    PipelineService.resume_waiting_steps(video)
+    # These mutate state and can start work in a background thread, so they are
+    # gated: opening the page as a read-only viewer must not run the pipeline.
+    if has_perm(request, Perm.STEP_RUN_FREE):
+        # Backfill any missing per-part steps (old splits / part-by-part flow), then
+        # kick any step left waiting (e.g. a free step whose executor now exists).
+        PipelineService.ensure_asset_steps(video)
+        # Create any missing part-preview steps first, then let resume_waiting_steps
+        # be the single runner that claims and executes all APPROVED steps.
+        PipelineService.backfill_part_videos(video)
+        PipelineService.resume_waiting_steps(video)
 
     chapters = VideoService.chapters_for(video_id)
     steps = _collapse_latest(list(VideoService.steps_for(video_id)))
+    for step in steps:
+        # Annotated for the technical-details table: which permission a step needs
+        # depends on whether it is paid, so resolve it here rather than in HTML.
+        step.may_approve = _may_approve_paid(request, step.is_paid)
 
     # Per-part step map for the Parts UI (images + narration live under a part).
     steps_by_chapter = {}
@@ -202,11 +291,22 @@ def video_detail(request, video_id):
             "render_step": cs.get(StepType.RENDER_PART),
             "pending_estimate": sum(float(x.estimated_cost_usd) for x in pending),
             "pending_count": len(pending),
+            # A part's button spends money if any of its pending steps is paid.
+            "may_approve": _may_approve(request, pending),
         })
 
     has_active = any(s.status in ACTIVE_STEP_STATUSES for s in steps)
     actions = _pending_actions(parts)
     next_step = _compute_next_step(video, parts, steps, has_active, actions)
+    # Decide button visibility here rather than in the template: whether an action
+    # is allowed depends on whether it is paid, which the template shouldn't reason
+    # about.
+    for action in actions:
+        action["allowed"] = _may_approve_paid(request, action["paid"])
+    if next_step.get("primary"):
+        next_step["primary"]["allowed"] = _may_approve_paid(
+            request, next_step["primary"]["paid"]
+        )
     signature = "|".join(f"{s.pk}:{s.status}" for s in steps)
 
     return render(
@@ -227,11 +327,10 @@ def video_detail(request, video_id):
     )
 
 
+@requires_perm(Perm.VIDEO_VIEW)
 def video_status(request, video_id):
     """Lightweight JSON for the detail page to poll while steps run."""
-    video = VideoService.get_video(video_id)
-    if video is None:
-        raise Http404("Video not found")
+    video = _get_video_or_404(request, video_id)
     steps = _collapse_latest(list(VideoService.steps_for(video_id)))
     payload = {
         "video_status": video.status,
@@ -255,25 +354,21 @@ def video_status(request, video_id):
     return JsonResponse(payload)
 
 
-def _get_step_or_404(step_id):
-    try:
-        return VideoService.get_step(step_id)
-    except Exception:
-        raise Http404("Step not found")
-
-
+@account_required
 def step_approve(request, video_id, step_id):
     if request.method != "POST":
         return redirect(reverse("videos:detail", args=[video_id]))
-    step = _get_step_or_404(step_id)
-    force = request.POST.get("force") == "1"
+    video, step = _get_step_or_404(request, video_id, step_id)
+    _require(request, _approval_perm_for(step))
     try:
-        PipelineService.approve_step_background(step, force=force)
+        PipelineService.approve_step_background(
+            step, force=_allowed_force(request), actor=request.user
+        )
         messages.success(
             request, f"Approved: {step.get_step_type_display()} — running in background."
         )
     except BudgetExceededError as exc:
-        messages.warning(request, str(exc) + " Use 'Approve anyway' to override.")
+        messages.warning(request, _budget_hint(request, exc, "Approve anyway"))
     except StepTypeNotImplemented as exc:
         messages.error(request, str(exc))
     except StepNotActionableError as exc:
@@ -281,10 +376,11 @@ def step_approve(request, video_id, step_id):
     return redirect(reverse("videos:detail", args=[video_id]))
 
 
+@requires_perm(Perm.STEP_REJECT)
 def step_reject(request, video_id, step_id):
     if request.method != "POST":
         return redirect(reverse("videos:detail", args=[video_id]))
-    step = _get_step_or_404(step_id)
+    video, step = _get_step_or_404(request, video_id, step_id)
     try:
         PipelineService.reject_step(step)
         messages.success(request, f"Rejected: {step.get_step_type_display()}.")
@@ -293,12 +389,13 @@ def step_reject(request, video_id, step_id):
     return redirect(reverse("videos:detail", args=[video_id]))
 
 
+@requires_perm(Perm.STEP_REGENERATE)
 def step_regenerate(request, video_id, step_id):
     """Regenerate a step. A failed/rejected step is reset in place; a completed one
     gets a fresh pending copy (so the finished output stays until re-approved)."""
     if request.method != "POST":
         return redirect(reverse("videos:detail", args=[video_id]))
-    step = _get_step_or_404(step_id)
+    video, step = _get_step_or_404(request, video_id, step_id)
     try:
         if step.status == StepStatus.COMPLETED:
             PipelineService.regenerate_step(step)
@@ -313,17 +410,19 @@ def step_regenerate(request, video_id, step_id):
     return redirect(reverse("videos:detail", args=[video_id]))
 
 
+@account_required
 def part_approve(request, video_id, chapter_id):
     """Approve + run all pending steps for one part (its images and narration)."""
     if request.method != "POST":
         return redirect(reverse("videos:detail", args=[video_id]))
-    video = VideoService.get_video(video_id)
-    if video is None:
-        raise Http404("Video not found")
-    force = request.POST.get("force") == "1"
+    video = _get_video_or_404(request, video_id)
+    _require(
+        request,
+        _batch_perm(VideoService.pending_steps(video.pk, chapter_id=chapter_id)),
+    )
     try:
         approved = PipelineService.approve_chapter_background(
-            video, chapter_id, force=force
+            video, chapter_id, force=_allowed_force(request), actor=request.user
         )
         if approved:
             messages.success(
@@ -333,39 +432,42 @@ def part_approve(request, video_id, chapter_id):
         else:
             messages.info(request, "Nothing pending for this part.")
     except BudgetExceededError as exc:
-        messages.warning(request, str(exc) + " Use 'Generate anyway' to override.")
+        messages.warning(request, _budget_hint(request, exc, "Generate anyway"))
     except StepTypeNotImplemented as exc:
         messages.error(request, str(exc))
     return redirect(reverse("videos:detail", args=[video_id]))
 
 
+@account_required
 def step_batch_approve(request, video_id):
     if request.method != "POST":
         return redirect(reverse("videos:detail", args=[video_id]))
-    video = VideoService.get_video(video_id)
-    if video is None:
-        raise Http404("Video not found")
+    video = _get_video_or_404(request, video_id)
     step_type = request.POST.get("step_type")
-    force = request.POST.get("force") == "1"
     if step_type not in StepType.values:
         messages.error(request, "Unknown step type.")
         return redirect(reverse("videos:detail", args=[video_id]))
+    _require(
+        request,
+        _batch_perm(VideoService.pending_steps(video.pk, step_type=step_type)),
+    )
     try:
-        approved = PipelineService.batch_approve_background(video, step_type, force=force)
+        approved = PipelineService.batch_approve_background(
+            video, step_type, force=_allowed_force(request), actor=request.user
+        )
         messages.success(
             request, f"Approved {len(approved)} step(s) — running in background."
         )
     except BudgetExceededError as exc:
-        messages.warning(request, str(exc) + " Use 'Approve all anyway' to override.")
+        messages.warning(request, _budget_hint(request, exc, "Approve all anyway"))
     except StepTypeNotImplemented as exc:
         messages.error(request, str(exc))
     return redirect(reverse("videos:detail", args=[video_id]))
 
 
+@requires_perm(Perm.VIDEO_DELETE)
 def video_delete(request, video_id):
-    video = VideoService.get_video(video_id)
-    if video is None:
-        raise Http404("Video not found")
+    video = _get_video_or_404(request, video_id)
     if request.method == "POST":
         VideoService.delete_video(video)
         messages.success(request, "Video deleted.")

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Default roles{% endblock %}
+{% block content %}
+  {% include "accounts/console/_nav.html" %}
+  <h1>Default roles</h1>
+  <p class="muted">
+    These are the roles copied into each new account. Editing one changes what
+    future accounts start with &mdash; existing accounts keep the copy they already have.
+  </p>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Role</th><th>Permissions</th><th></th></tr></thead>
+      <tbody>
+        {% for role in roles %}
+          <tr>
+            <td>
+              <strong>{{ role.name }}</strong>
+              {% if role.description %}
+                <div class="muted" style="font-size:12px;">{{ role.description }}</div>
+              {% endif %}
+            </td>
+            <td class="muted" style="font-size:12px;">
+              {{ role.permission_labels|join:", "|default:"No permissions" }}
+            </td>
+            <td><a href="{% url 'console:default_role_edit' role.pk %}">Edit</a></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3" class="muted">
+            None seeded. Run <code>python manage.py bootstrap_rbac</code>.
+          </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

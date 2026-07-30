@@ -87,9 +87,13 @@ class RoleService:
             raise AccessError(f"A role called '{name}' already exists in this account.")
 
         cleaned = perms.clean(codenames)
-        # Do not let someone lock every administrator out of the account.
-        if Perm.ACCOUNT_MANAGE_USERS in role.codenames \
-                and Perm.ACCOUNT_MANAGE_USERS not in cleaned:
+        # Do not let someone lock every administrator out of the account. System
+        # default roles (account=None) have no memberships, so they are exempt.
+        if (
+            role.account_id is not None
+            and Perm.ACCOUNT_MANAGE_USERS in role.codenames
+            and Perm.ACCOUNT_MANAGE_USERS not in cleaned
+        ):
             RoleService._assert_not_last_admin_role(role, actor)
 
         return RoleRepository.update(

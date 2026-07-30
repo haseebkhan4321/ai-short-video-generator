@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Account requests{% endblock %}
+{% block content %}
+  {% include "accounts/console/_nav.html" %}
+  <h1>Account requests</h1>
+
+  {% for r in requests %}
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:flex-start; gap:16px;">
+        <div style="flex:1; min-width:240px;">
+          <strong>{{ r.email }}</strong>
+          {% if r.status == "pending" %}<span class="badge amber">Pending</span>
+          {% elif r.status == "approved" %}<span class="badge green">Approved</span>
+          {% else %}<span class="badge red">Rejected</span>{% endif %}
+          <div class="muted" style="font-size:13px; margin-top:4px;">
+            {{ r.full_name|default:"(no name given)" }} &nbsp;·&nbsp;
+            wants the account <strong>{{ r.account_name }}</strong> &nbsp;·&nbsp;
+            {{ r.created_at|date:"j M Y, H:i" }}
+          </div>
+          {% if r.message %}
+            <div style="margin-top:10px;"><div class="muted" style="font-size:12px;">Their message</div>{{ r.message }}</div>
+          {% endif %}
+          {% if r.reviewed_by %}
+            <div class="muted" style="font-size:12px; margin-top:10px;">
+              Reviewed by {{ r.reviewed_by.display_name }} on {{ r.reviewed_at|date:"j M Y, H:i" }}
+              {% if r.decision_note %}&nbsp;·&nbsp; &ldquo;{{ r.decision_note }}&rdquo;{% endif %}
+            </div>
+          {% endif %}
+          {% if r.account %}
+            <div class="muted" style="font-size:12px; margin-top:6px;">
+              Account created: {{ r.account.name }} ({{ r.account.slug }})
+            </div>
+          {% endif %}
+        </div>
+
+        {% if r.is_pending %}
+          <form method="post" action="{% url 'console:request_review' r.pk %}"
+                style="flex:0 0 260px;">
+            {% csrf_token %}
+            <label for="note-{{ r.pk }}">Note (optional)</label>
+            <input type="text" id="note-{{ r.pk }}" name="note" maxlength="300">
+            <div style="margin-top:10px; display:flex; gap:8px;">
+              <button type="submit" name="decision" value="approve" class="btn green">Approve</button>
+              <button type="submit" name="decision" value="reject" class="btn red">Reject</button>
+            </div>
+            <div class="muted" style="font-size:12px; margin-top:8px;">
+              Approving activates their sign-in and creates the account with the
+              default roles. Rejecting deletes the pending user.
+            </div>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  {% empty %}
+    <div class="card"><p class="muted" style="margin:0;">No requests yet.</p></div>
+  {% endfor %}
+{% endblock %}

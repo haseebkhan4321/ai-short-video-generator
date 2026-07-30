@@ -83,7 +83,7 @@ def run_images_step(step):
     payload = step.request_payload or {}
     num_images = int(payload.get("num_images") or settings.IMAGES_PER_PART)
     image_model = payload.get("model") or settings.OPENAI_IMAGE_MODEL
-    style_prompt = video.profile.style_prompt
+    style_prompt = video.template.style_prompt
 
     api_calls = []
     PipelineService.update_progress(

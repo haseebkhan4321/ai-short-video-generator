@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Request an account{% endblock %}
+{% block content %}
+  <h1>Request an account</h1>
+  <div class="card" style="max-width: 560px;">
+    <p class="muted">
+      A system administrator reviews every request. Choose your password now &mdash;
+      once your request is approved you sign in with it directly.
+    </p>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% include "accounts/_form_fields.html" %}
+      <div style="margin-top:20px;">
+        <button type="submit" class="btn">Send request</button>
+        <a class="btn secondary" href="{% url 'accounts:home' %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

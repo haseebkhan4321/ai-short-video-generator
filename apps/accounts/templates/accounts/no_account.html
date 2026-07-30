@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}No account yet{% endblock %}
+{% block content %}
+  <h1>You are not in any account yet</h1>
+  <div class="card" style="max-width: 560px;">
+    <p>
+      You are signed in, but you do not have an active role in any account, so there
+      is nothing to show you.
+    </p>
+    <p class="muted" style="margin-bottom:0;">
+      Ask an account administrator to add you, or a system administrator to set up
+      an account for you.
+    </p>
+  </div>
+  <a class="btn secondary" href="{% url 'accounts:my_profile' %}">Your profile</a>
+{% endblock %}

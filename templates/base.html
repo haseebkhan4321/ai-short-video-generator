@@ -144,17 +144,90 @@
       color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer;
     }
     .player-rate:hover { color: var(--text); border-color: var(--muted); }
+    header.topbar .spacer { flex: 1; }
+    header.topbar .who { color: var(--muted); font-size: 13px; white-space: nowrap; }
+    header.topbar .who a { color: var(--text); }
+    .linkbtn {
+      background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+      color: var(--muted); font: inherit; font-size: 13px; text-decoration: underline;
+    }
+    .linkbtn:hover { color: var(--text); }
+    .switcher { display: inline-flex; align-items: center; gap: 6px; }
+    .switcher select { width: auto; padding: 5px 8px; font-size: 13px; }
+    .nav-group { margin-left: 8px; padding-left: 14px; border-left: 1px solid var(--border); }
+    .perm-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px;
+    }
+    .perm-grid label {
+      display: flex; gap: 9px; align-items: flex-start; margin: 0;
+      padding: 10px 12px; background: var(--panel-2);
+      border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+    }
+    .perm-grid input[type="checkbox"] { width: auto; margin-top: 2px; flex: 0 0 auto; }
+    .perm-grid .perm-help { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .hero { text-align: center; padding: 40px 20px 10px; }
+    .hero h1 { font-size: 34px; margin: 0 0 10px; }
+    .hero p { color: var(--muted); max-width: 620px; margin: 0 auto 22px; }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <span class="brand">🎬 AI Story Video Studio</span>
-    <nav>
-      <a href="{% url 'profiles:list' %}">Profiles</a>
-      <a href="{% url 'videos:list' %}">Videos</a>
-    </nav>
+    <a class="brand" href="{% if user.is_authenticated %}{% url 'videos:list' %}{% else %}{% url 'accounts:home' %}{% endif %}">🎬 AI Story Video Studio</a>
+    {% if user.is_authenticated %}
+      <nav>
+        {% if can.template_view %}<a href="{% url 'templates:list' %}">Templates</a>{% endif %}
+        {% if can.video_view %}<a href="{% url 'videos:list' %}">Videos</a>{% endif %}
+        {% if can.account_manage_users or can.account_manage_roles or can.account_manage_settings %}
+          <span class="nav-group">
+            {% if can.account_manage_users %}<a href="{% url 'accounts:user_list' %}">Users</a>{% endif %}
+            {% if can.account_manage_roles %}<a href="{% url 'accounts:role_list' %}">Roles</a>{% endif %}
+            {% if can.account_manage_settings %}<a href="{% url 'accounts:settings' %}">Settings</a>{% endif %}
+          </span>
+        {% endif %}
+        {% if is_system_admin %}
+          <span class="nav-group"><a href="{% url 'console:dashboard' %}">Console</a></span>
+        {% endif %}
+      </nav>
+      <span class="spacer"></span>
+      {% if account_memberships|length > 1 %}
+        <form class="switcher" method="post" action="{% url 'accounts:switch' 0 %}"
+              data-switch-base="{% url 'accounts:switch' 0 %}">
+          {% csrf_token %}
+          <select name="account" aria-label="Active account" data-account-switch>
+            {% for m in account_memberships %}
+              <option value="{{ m.account.pk }}" {% if account and m.account.pk == account.pk %}selected{% endif %}>
+                {{ m.account.name }} · {{ m.role.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </form>
+      {% elif account %}
+        <span class="who">{{ account.name }}</span>
+      {% endif %}
+      <span class="who">
+        <a href="{% url 'accounts:my_profile' %}">{{ user.display_name }}</a>
+        &nbsp;·&nbsp;
+        <form method="post" action="{% url 'accounts:logout' %}" class="inline-form">
+          {% csrf_token %}
+          <button type="submit" class="linkbtn">Sign out</button>
+        </form>
+      </span>
+    {% else %}
+      <span class="spacer"></span>
+      <span class="who">
+        <a href="{% url 'accounts:login' %}">Sign in</a>
+        &nbsp;·&nbsp;
+        <a href="{% url 'accounts:request' %}">Request an account</a>
+      </span>
+    {% endif %}
   </header>
   <main>
+    {% if user.is_authenticated and user.must_change_password %}
+      <div class="card" style="border-color: var(--amber);">
+        Your password was set by an administrator.
+        <a href="{% url 'accounts:my_profile' %}">Change it now</a>.
+      </div>
+    {% endif %}
     {% if messages %}
       <ul class="messages">
         {% for message in messages %}
@@ -243,6 +316,20 @@
         });
 
         render();
+      });
+    })();
+
+    // Account switcher: the form's action carries the target account id, so
+    // rewrite it from the selected option and submit. Switching is a POST because
+    // it changes session state.
+    (function () {
+      var select = document.querySelector('[data-account-switch]');
+      if (!select) return;
+      var form = select.closest('form');
+      var base = form.getAttribute('data-switch-base');
+      select.addEventListener('change', function () {
+        form.action = base.replace(/\/0\/$/, '/' + select.value + '/');
+        form.submit();
       });
     })();
 

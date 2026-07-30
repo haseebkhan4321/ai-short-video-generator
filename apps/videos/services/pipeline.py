@@ -109,9 +109,10 @@ class PipelineService:
     # ---- Video creation ----
 
     @staticmethod
-    def create_video(profile, premise, target_minutes):
+    def create_video(template, premise, target_minutes, actor=None):
         video = VideoRepository.create(
-            profile=profile,
+            template=template,
+            created_by=actor,
             premise=premise,
             target_minutes=target_minutes,
             status=VideoStatus.DRAFT,
@@ -127,7 +128,7 @@ class PipelineService:
             "target_minutes": video.target_minutes,
             "target_words": CostEstimator.target_words(video.target_minutes),
             "premise": video.premise,
-            "style_prompt": video.profile.style_prompt,
+            "style_prompt": video.template.style_prompt,
         }
         return StepRepository.create(
             video=video,
@@ -154,25 +155,33 @@ class PipelineService:
     # ---- Approval / rejection ----
 
     @staticmethod
-    def approve_step(step, force=False):
+    def approve_step(step, force=False, actor=None):
         if step.status != StepStatus.PENDING_APPROVAL:
             raise StepNotActionableError("Step is not pending approval.")
         if not has_executor(step.step_type):
             raise StepTypeNotImplemented(step.step_type)
         PipelineService._check_budget(step.video, step.estimated_cost_usd, force)
+        StepRepository.update(step, approved_by=actor)
         return PipelineService._approve_and_run(step)
 
     @staticmethod
-    def approve_step_background(step, force=False):
+    def approve_step_background(step, force=False, actor=None):
         """Validate + mark approved synchronously, then run in a background thread
-        so the request returns immediately. Used by the web UI."""
+        so the request returns immediately. Used by the web UI.
+
+        ``actor`` is recorded here rather than in the executor because the thread
+        that runs the step has no request and therefore no user.
+        """
         if step.status != StepStatus.PENDING_APPROVAL:
             raise StepNotActionableError("Step is not pending approval.")
         if not has_executor(step.step_type):
             raise StepTypeNotImplemented(step.step_type)
         PipelineService._check_budget(step.video, step.estimated_cost_usd, force)
         StepRepository.update(
-            step, status=StepStatus.APPROVED, approved_at=timezone.now()
+            step,
+            status=StepStatus.APPROVED,
+            approved_at=timezone.now(),
+            approved_by=actor,
         )
         threading.Thread(
             target=_run_steps_threaded, args=([step.pk],), daemon=True
@@ -180,7 +189,7 @@ class PipelineService:
         return step
 
     @staticmethod
-    def batch_approve_background(video, step_type, force=False):
+    def batch_approve_background(video, step_type, force=False, actor=None):
         pending = list(
             StepRepository.for_video(video.pk).filter(
                 step_type=step_type, status=StepStatus.PENDING_APPROVAL
@@ -196,7 +205,10 @@ class PipelineService:
         ids = []
         for step in pending:
             StepRepository.update(
-                step, status=StepStatus.APPROVED, approved_at=timezone.now()
+                step,
+                status=StepStatus.APPROVED,
+                approved_at=timezone.now(),
+                approved_by=actor,
             )
             ids.append(step.pk)
         threading.Thread(
@@ -205,7 +217,7 @@ class PipelineService:
         return ids
 
     @staticmethod
-    def approve_chapter_background(video, chapter_id, force=False):
+    def approve_chapter_background(video, chapter_id, force=False, actor=None):
         """Approve and run all pending steps for one part (images + narration) so a
         part can be completed on its own."""
         pending = list(
@@ -223,7 +235,10 @@ class PipelineService:
         ids = []
         for step in pending:
             StepRepository.update(
-                step, status=StepStatus.APPROVED, approved_at=timezone.now()
+                step,
+                status=StepStatus.APPROVED,
+                approved_at=timezone.now(),
+                approved_by=actor,
             )
             ids.append(step.pk)
         threading.Thread(
@@ -249,6 +264,7 @@ class PipelineService:
             error_message="",
             actual_cost_usd=None,
             approved_at=None,
+            approved_by=None,
             started_at=None,
             finished_at=None,
             progress_current=0,
@@ -307,7 +323,7 @@ class PipelineService:
             StepRepository.update(step, **fields)
 
     @staticmethod
-    def batch_approve(video, step_type, force=False):
+    def batch_approve(video, step_type, force=False, actor=None):
         pending = StepRepository.for_video(video.pk).filter(
             step_type=step_type, status=StepStatus.PENDING_APPROVAL
         )
@@ -319,13 +335,14 @@ class PipelineService:
         for step in pending:
             if not has_executor(step.step_type):
                 raise StepTypeNotImplemented(step.step_type)
-        return [PipelineService._approve_and_run(s) for s in pending]
+        return [PipelineService._approve_and_run(s, actor=actor) for s in pending]
 
     @staticmethod
-    def _approve_and_run(step):
-        StepRepository.update(
-            step, status=StepStatus.APPROVED, approved_at=timezone.now()
-        )
+    def _approve_and_run(step, actor=None):
+        fields = {"status": StepStatus.APPROVED, "approved_at": timezone.now()}
+        if actor is not None:
+            fields["approved_by"] = actor
+        StepRepository.update(step, **fields)
         return PipelineService.run_step(step)
 
     # ---- Execution ----
@@ -577,7 +594,7 @@ class PipelineService:
     def _create_narration_steps(video):
         # Narration uses Kokoro (local, free). Steps still wait for a manual start
         # since they are a long-running job.
-        voice = video.profile.narrator_voice
+        voice = video.template.narrator_voice
         already = PipelineService._chapters_with_step(video, StepType.NARRATION)
         chapters = ChapterRepository.for_video(video.pk)
         for chapter in chapters:

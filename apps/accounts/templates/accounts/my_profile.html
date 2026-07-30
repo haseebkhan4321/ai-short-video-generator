@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Your profile{% endblock %}
+{% block content %}
+  <h1>Your profile</h1>
+
+  <div class="card" style="max-width: 560px;">
+    <div class="muted" style="font-size:13px;">Signed in as</div>
+    <div style="margin-bottom:14px;">
+      {{ user.email }}
+      {% if user.is_system_admin %}<span class="badge accent">System administrator</span>{% endif %}
+    </div>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="profile">
+      {% include "accounts/_form_fields.html" with form=profile_form %}
+      <div style="margin-top:16px;"><button type="submit" class="btn">Save</button></div>
+    </form>
+  </div>
+
+  <h2>Your accounts</h2>
+  {% if account_memberships %}
+    <div class="card">
+      <table>
+        <thead><tr><th>Account</th><th>Your role</th><th>Permissions</th><th></th></tr></thead>
+        <tbody>
+          {% for m in account_memberships %}
+            <tr>
+              <td>
+                {{ m.account.name }}
+                {% if account and m.account.pk == account.pk %}
+                  <span class="badge accent">Active</span>
+                {% endif %}
+                {% if m.account.owner_id == user.pk %}<span class="badge">Owner</span>{% endif %}
+              </td>
+              <td>{{ m.role.name }}</td>
+              <td class="muted" style="font-size:12px;">
+                {{ m.role.permission_labels|join:", "|default:"—" }}
+              </td>
+              <td>
+                {% if not account or m.account.pk != account.pk %}
+                  <form class="inline-form" method="post" action="{% url 'accounts:switch' m.account.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn secondary">Switch to this</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card"><p class="muted">You are not in any account yet.</p></div>
+  {% endif %}
+
+  <h2>Change your password</h2>
+  <div class="card" style="max-width: 560px;">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="password">
+      {% include "accounts/_form_fields.html" with form=password_form %}
+      <div style="margin-top:16px;"><button type="submit" class="btn">Change password</button></div>
+    </form>
+  </div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{# Shared field renderer. Skips the permissions field, which has its own layout. #}
+{% if form.non_field_errors %}
+  {% for error in form.non_field_errors %}
+    <div class="badge red" style="margin-bottom:10px;">{{ error }}</div>
+  {% endfor %}
+{% endif %}
+{% for field in form %}
+  {% if field.name != "permissions" %}
+    <div>
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.help_text %}<div class="muted" style="font-size:13px;margin-top:4px;">{{ field.help_text }}</div>{% endif %}
+      {% for error in field.errors %}<div class="badge red" style="margin-top:6px;">{{ error }}</div>{% endfor %}
+    </div>
+  {% endif %}
+{% endfor %}

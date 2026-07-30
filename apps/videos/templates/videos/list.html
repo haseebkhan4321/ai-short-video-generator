@@ -4,20 +4,22 @@
 {% block content %}
   <div class="row" style="justify-content: space-between; align-items: center;">
     <h1>Videos</h1>
-    <a class="btn" href="{% url 'videos:create' %}">+ New video</a>
+    {% if can.video_create %}
+      <a class="btn" href="{% url 'videos:create' %}">+ New video</a>
+    {% endif %}
   </div>
 
   {% if videos %}
     <div class="card">
       <table>
         <thead>
-          <tr><th>Title</th><th>Profile</th><th>Status</th><th>Target</th><th>Cost</th></tr>
+          <tr><th>Title</th><th>Template</th><th>Status</th><th>Target</th><th>Cost</th></tr>
         </thead>
         <tbody>
           {% for video in videos %}
             <tr>
               <td><a href="{% url 'videos:detail' video.pk %}">{{ video }}</a></td>
-              <td>{{ video.profile.name }}</td>
+              <td>{{ video.template.name }}</td>
               <td><span class="badge {{ video.status|status_class }}">{{ video.get_status_display }}</span></td>
               <td>{{ video.target_minutes }} min</td>
               <td>{{ video.total_cost_usd|pkr }}</td>
@@ -29,7 +31,9 @@
   {% else %}
     <div class="card">
       <p class="muted">No videos yet. Create one to start the pipeline.</p>
-      <a class="btn" href="{% url 'videos:create' %}">+ New video</a>
+      {% if can.video_create %}
+        <a class="btn" href="{% url 'videos:create' %}">+ New video</a>
+      {% endif %}
     </div>
   {% endif %}
 {% endblock %}

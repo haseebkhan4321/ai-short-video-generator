@@ -1,5 +1,18 @@
 # Phase 1 Plan: Generate a Long-Form Narrated Video Locally
 
+> **Superseded in two places.** Phase 1 assumed a single anonymous local operator
+> and called the content identity a **Profile**. Since then:
+>
+> - `Profile` is now **`Template`** (`apps/templates`, URLs at `/templates/`). It was
+>   never a user profile — it is a content identity.
+> - Authentication and multi-tenant RBAC were added on top: **accounts** own
+>   templates, roles are defined per account from a fixed permission catalog, and
+>   approving spend (`step.approve_paid`) is separate from exceeding the budget cap
+>   (`step.override_budget`). See [`rbac.md`](rbac.md).
+>
+> Read `Profile` as `Template` below, and assume every page requires a login and is
+> scoped to the caller's active account.
+
 ## What we are building
 
 A **Video** in this system is one **long-form, continuous story (1 to 2 hours)**. The full flow for a single video:
@@ -30,7 +43,7 @@ Goal of Phase 1: produce one complete long-form MP4 on local disk. Nothing else.
 1. **Django 5.x** using the **repository pattern**: views/services never touch the ORM directly; all queries go through repository classes.
 2. **MySQL** (Laragon's local MySQL).
 3. **Local storage only**: every asset lives under the project `media/` folder.
-4. **Profiles**: a Profile is a content identity (niche, style/prompt template, default voice). Each Profile owns a list of generated videos.
+4. **Templates**: a Template is a content identity (niche, style/prompt template, default voice). Each Template owns a list of generated videos, and belongs to an Account.
 5. **Lifecycle visibility**: the UI shows videos in process plus full detail per video (title, story text per chapter, images, per-step status, costs).
 6. **Approval gate before spending money**: every step that calls a paid API (OpenAI script + images) is created as `pending_approval` with an estimated cost and the exact payload. Nothing is sent to a paid API until the user approves. Narration (Kokoro, local) and render (FFmpeg) are free; narration still waits for a manual start because it is a long job, but its estimate is Rs 0.
 
@@ -98,10 +111,15 @@ With Kokoro narration and local render, the only paid steps are the OpenAI scrip
 
 ## Data model (MySQL via Django ORM)
 
+Since RBAC landed, `Template` also has an `account_id` FK, `Video` has `created_by`,
+and `GenerationStep` has `approved_by` — see [`rbac.md`](rbac.md) for the
+`User` / `Account` / `Role` / `Membership` / `AccountRequest` tables.
+
 ```
-Profile
+Template  (was: Profile)
 -------
 id
+account_id           FK -> Account   (added with RBAC; the ownership anchor)
 name                 e.g. "Midnight Horror Narrations"
 niche                e.g. horror | history | sci-fi | bedtime ...
 description
@@ -113,7 +131,8 @@ created_at / updated_at
 Video
 -----
 id
-profile_id           FK -> Profile
+template_id          FK -> Template  (was profile_id)
+created_by_id        FK -> User, nullable (added with RBAC)
 premise              user-entered premise/topic for the continuous story
 target_minutes       requested length (e.g. 90)
 title                nullable until script is generated
@@ -168,6 +187,7 @@ response_metadata    JSON (usage, ids, timings)
 estimated_cost_usd   decimal
 actual_cost_usd      decimal, nullable
 error_message        nullable
+approved_by_id       FK -> User, nullable (added with RBAC; spend audit trail)
 approved_at / started_at / finished_at
 created_at
 
@@ -207,15 +227,24 @@ ai-generated-short-videos/
 ├── config/                     Django project
 │   ├── settings/ base.py, local.py
 │   ├── urls.py
+│   ├── media_serve.py          login- and account-checked media (added with RBAC)
 │   └── wsgi.py
 ├── apps/
-│   ├── profiles/
-│   │   ├── models.py
-│   │   ├── repositories.py     ProfileRepository
+│   ├── accounts/               added with RBAC — see docs/rbac.md
+│   │   ├── models.py           User, Account, Role, Membership, AccountRequest
+│   │   ├── permissions.py      the fixed permission catalog + default roles
+│   │   ├── access.py           middleware, decorators, context processor
+│   │   ├── repositories.py / services.py
+│   │   ├── views.py            home, login, request, profile, users, roles, settings
+│   │   ├── console_views.py    system admin: requests, users, accounts
+│   │   └── templates/accounts/
+│   ├── templates/              (was: profiles/)
+│   │   ├── models.py           Template
+│   │   ├── repositories.py     TemplateRepository
 │   │   ├── services.py
-│   │   ├── views.py            list / create / edit profiles
+│   │   ├── views.py            list / create / edit templates
 │   │   ├── urls.py
-│   │   └── templates/profiles/
+│   │   └── templates/templates/
 │   └── videos/
 │       ├── models.py           Video, Chapter, ChapterImage, GenerationStep, ApiCallLog
 │       ├── repositories.py     VideoRepository, ChapterRepository, StepRepository, ApiCallLogRepository
@@ -287,15 +316,25 @@ Kokoro model files (`kokoro-v1.0.onnx`, `voices-v1.0.bin`) live under `assets/ko
 
 ## UI pages (Phase 1, minimal)
 
-1. **Profiles list / form**: create/edit profiles (name, niche, style prompt, narrator voice id).
-2. **Profile detail**: that profile's videos with status badges (in process / completed / failed) and total cost each.
-3. **New video**: pick profile, enter premise + target minutes; creates a Video in `draft` and the first pending script step.
-4. **Video detail** (main screen):
-   - Header: title, description, hashtags, target vs actual length, total cost.
-   - Full script (expandable) once generated; parts list after the split, each with its text slice, images, and a per-part audio player once narrated.
+All of these now require a login and show only the active account's rows. Action
+buttons render only when the caller's role permits them. RBAC also added a public
+home page, login and account-request pages, an account switcher, per-account user
+and role management, and a system console — see [`rbac.md`](rbac.md).
+
+1. **Templates list / form**: create/edit templates (name, niche, style prompt, narrator voice id).
+2. **Template detail**: that template's videos with status badges (in process / completed / failed) and total cost each.
+3. **New video**: pick template, enter premise + target minutes; creates a Video in `draft` and the first pending script step.
+4. **Video detail** (main screen), top to bottom:
+   - Header: title, the template it came from, and a Script -> Render stepper.
+   - Target vs actual length, words, total spent and budget cap, plus the premise.
+   - Full script (expandable) once generated, with description and hashtags.
+   - "Next step": one plain-language instruction plus the action that follows from it.
    - Full narration player and final video player when ready.
-   - Steps timeline: each GenerationStep with status, estimated vs actual cost, and Approve / Reject buttons when pending; plus "approve all images" and "approve all narration" batch actions with combined estimates.
-   - Regenerate buttons per step/part (creates a new pending step).
+   - Parts list after the split, each with its text slice, images, a per-part preview video and audio player, and a per-part "Generate this part" button.
+   - Technical details (collapsed): each GenerationStep with status, estimated vs actual cost, who approved it, and Approve / Reject / Regenerate when applicable; plus "approve all images" and "approve all narration" batch actions with combined estimates.
+
+   The spend numbers and the script sit *above* the action panel deliberately: what a
+   video has already cost and what it says are what you need before approving more.
 
 ## Milestones / build order
 

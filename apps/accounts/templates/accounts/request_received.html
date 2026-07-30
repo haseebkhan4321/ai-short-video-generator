@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Request received{% endblock %}
+{% block content %}
+  <h1>Request received</h1>
+  <div class="card" style="max-width: 560px;">
+    <p>
+      Your request is waiting for a system administrator to review. Until it is
+      approved, signing in will not work.
+    </p>
+    <p class="muted" style="margin-bottom:0;">
+      When it is approved, sign in with the email and password you just chose.
+    </p>
+  </div>
+  <a class="btn secondary" href="{% url 'accounts:home' %}">Back to the home page</a>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% load video_extras %}
+{% block title %}{{ template.name }}{% endblock %}
+{% block content %}
+  <p><a href="{% url 'templates:list' %}">&larr; Templates</a></p>
+  <div class="row" style="justify-content: space-between; align-items: center;">
+    <h1>{{ template.name }}</h1>
+    {% if can.template_manage %}
+      <a class="btn secondary" href="{% url 'templates:edit' template.pk %}">Edit template</a>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="row" style="gap: 40px;">
+      <div><div class="muted">Niche</div>{{ template.niche|default:"—" }}</div>
+      <div><div class="muted">Language</div>{{ template.language }}</div>
+      <div><div class="muted">Voice</div>{{ template.narrator_voice|default:"—" }}</div>
+    </div>
+    {% if template.description %}
+      <div style="margin-top:14px;"><div class="muted">Description</div>{{ template.description }}</div>
+    {% endif %}
+    {% if template.style_prompt %}
+      <div style="margin-top:14px;"><div class="muted">Style prompt</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 0;">{{ template.style_prompt }}</pre>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="row" style="gap: 40px;">
+      <div><div class="muted">Videos</div>{{ cost_summary.video_count }}</div>
+      <div><div class="muted">Completed</div>{{ cost_summary.completed_count }}</div>
+      {% if cost_summary.failed_count %}
+        <div><div class="muted">Failed</div><span style="color:var(--red);">{{ cost_summary.failed_count }}</span></div>
+      {% endif %}
+      <div><div class="muted">Total spent</div><strong>{{ cost_summary.total_cost_usd|pkr }}</strong></div>
+    </div>
+  </div>
+
+  <div class="row" style="justify-content: space-between; align-items: center;">
+    <h2>Videos</h2>
+  </div>
+  {% if videos %}
+    <div class="card">
+      <table>
+        <thead><tr><th>Title</th><th>Status</th><th>Target</th><th>Cost</th></tr></thead>
+        <tbody>
+          {% for video in videos %}
+            <tr>
+              <td><a href="{% url 'videos:detail' video.pk %}">{{ video }}</a></td>
+              <td><span class="badge">{{ video.get_status_display }}</span></td>
+              <td>{{ video.target_minutes }} min</td>
+              <td>{{ video.total_cost_usd|pkr }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card"><p class="muted">No videos for this template yet.</p></div>
+  {% endif %}
+{% endblock %}

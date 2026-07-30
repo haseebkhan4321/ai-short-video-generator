@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load video_extras %}
+{% block title %}Templates{% endblock %}
+{% block content %}
+  <div class="row" style="justify-content: space-between; align-items: center;">
+    <h1>Templates</h1>
+    {% if can.template_manage %}
+      <a class="btn" href="{% url 'templates:create' %}">+ New template</a>
+    {% endif %}
+  </div>
+
+  {% if templates %}
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Niche</th><th>Voice</th><th>Language</th><th>Videos</th><th>Spent</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for template in templates %}
+            <tr>
+              <td><a href="{% url 'templates:detail' template.pk %}">{{ template.name }}</a></td>
+              <td>{{ template.niche|default:"—" }}</td>
+              <td>{{ template.narrator_voice|default:"—" }}</td>
+              <td>{{ template.language }}</td>
+              <td>{{ template.video_count }}</td>
+              <td>{{ template.total_cost|pkr }}</td>
+              <td>
+                {% if can.template_manage %}
+                  <a href="{% url 'templates:edit' template.pk %}">Edit</a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card">
+      <p class="muted">No templates yet. Create one to start generating videos.</p>
+      {% if can.template_manage %}
+        <a class="btn" href="{% url 'templates:create' %}">+ New template</a>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}

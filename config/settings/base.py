@@ -51,7 +51,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Local apps
-    "apps.profiles",
+    "apps.accounts",
+    "apps.templates",
     "apps.videos",
 ]
 
@@ -61,6 +62,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Resolves the active account and permission set. Must follow authentication.
+    "apps.accounts.access.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -78,6 +81,9 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                # Supplies `account`, `account_memberships` and the `can` dict that
+                # gates every action in the templates.
+                "apps.accounts.access.access_context",
             ],
         },
     },
@@ -100,12 +106,32 @@ DATABASES = {
     }
 }
 
+# ---- Authentication ----
+
+AUTH_USER_MODEL = "accounts.User"
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "videos:list"
+LOGOUT_REDIRECT_URL = "accounts:home"
+
+# Session hardening. Media and every page require a login now, so a leaked session
+# cookie is worth more than it used to be.
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_AGE = _get_int("SESSION_COOKIE_AGE", 60 * 60 * 24 * 14)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = _get_bool("SESSION_EXPIRE_AT_BROWSER_CLOSE", False)
+CSRF_COOKIE_HTTPONLY = False  # the polling JS reads the token from the form, not JS
+CSRF_COOKIE_SAMESITE = "Lax"
+# HTTPS-only cookies in production; local development runs over plain HTTP.
+SESSION_COOKIE_SECURE = _get_bool("SESSION_COOKIE_SECURE", False)
+CSRF_COOKIE_SECURE = _get_bool("CSRF_COOKIE_SECURE", False)
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"

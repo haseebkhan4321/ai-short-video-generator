@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+  <p><a href="{% url 'accounts:user_list' %}">&larr; Users</a></p>
+  <h1>{{ title }}</h1>
+
+  <div class="card" style="max-width: 560px;">
+    {% if membership %}
+      <div class="muted" style="font-size:13px;">{{ membership.user.email }}</div>
+    {% endif %}
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% include "accounts/_form_fields.html" %}
+      <div style="margin-top:20px;">
+        <button type="submit" class="btn">Save</button>
+        <a class="btn secondary" href="{% url 'accounts:user_list' %}">Cancel</a>
+      </div>
+    </form>
+    <p class="muted" style="font-size:13px; margin-bottom:0; margin-top:16px;">
+      You can only assign a role whose permissions you hold yourself.
+    </p>
+  </div>
+{% endblock %}
