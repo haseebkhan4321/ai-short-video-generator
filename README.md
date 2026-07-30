@@ -53,8 +53,15 @@ Open http://127.0.0.1:8000/ for the public landing page, then sign in at
 `/accounts/login/`. System console at `/console/`, Django admin at `/admin/`.
 
 `seed_development` prints the accounts it created and their shared password. Both
-seeders are idempotent; `seed_development --fresh` rebuilds its own demo data. See
+seeders are idempotent; `seed_development --fresh` rebuilds its own demo data. Add
+throwaway videos of any size with
+`seed_test_video --account <slug> --parts 14 --words 950`. See
 [`docs/seeders.md`](docs/seeders.md) and [`docs/rbac.md`](docs/rbac.md).
+
+For local work, set `DEV_LOGIN_ENABLED=True` in `.env` to get one-click sign-in
+buttons for the seeded `@dev.local` users on the sign-in page. It is ignored unless
+`DEBUG` is also true, and can only ever sign you in as a user at that throwaway
+domain.
 
 ## Layout
 
@@ -89,9 +96,9 @@ docs/              Plan, RBAC model, seeders, brief
 .venv\Scripts\python manage.py test
 ```
 
-124 tests covering permission resolution, account isolation, the two spend gates, the
-account-request flow, and the seeders. Plain `django.test.TestCase` — no extra
-dependency.
+156 tests covering permission resolution, account isolation, the two spend gates, the
+account-request flow, the seeders, and the development sign-in guards. Plain
+`django.test.TestCase` — no extra dependency.
 
 ## Build status
 

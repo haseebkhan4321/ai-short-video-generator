@@ -18,4 +18,37 @@
       No account? <a href="{% url 'accounts:request' %}">Request one</a>.
     </div>
   </div>
+
+  {# Only ever rendered when DEV_LOGIN_ENABLED, which is itself `and DEBUG`. #}
+  {% if dev_logins %}
+    <div class="panel warn mt" style="margin-top:18px;">
+      <div class="panel-head">
+        <svg class="ico" width="15" height="15" viewBox="0 0 16 16" style="color:var(--amber)"><use href="#i-lock"/></svg>
+        <h2>Development sign-in</h2>
+        <div class="right"><span class="badge amber">No password checked</span></div>
+      </div>
+      <div class="panel-body">
+        <p class="sm dim">
+          Seeded <code>{{ dev_login_domain }}</code> users only. Turn this off with
+          <code>DEV_LOGIN_ENABLED=False</code>.
+        </p>
+        <div class="stack tight mt">
+          {% for entry in dev_logins %}
+            <form method="post" action="{% url 'accounts:dev_login' entry.user.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ next }}">
+              <button type="submit" class="btn ghost block dev-login">
+                <span class="avatar">{{ entry.user.display_name|slice:":2"|upper }}</span>
+                <span class="grow" style="text-align:left;">
+                  {{ entry.user.email }}
+                  <span class="sub">{{ entry.roles }}</span>
+                </span>
+                <span class="sm muted nowrap">Sign in &rarr;</span>
+              </button>
+            </form>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
 {% endblock %}

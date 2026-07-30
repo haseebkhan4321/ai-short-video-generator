@@ -13,6 +13,8 @@ urlpatterns = [
     path("accounts/request/", views.account_request, name="request"),
     path("accounts/request/received/", views.request_received, name="request_received"),
     path("accounts/none/", views.no_account, name="no_account"),
+    # Development only: 404s unless DEV_LOGIN_ENABLED (which is itself `and DEBUG`).
+    path("accounts/dev-login/<int:user_id>/", views.dev_login, name="dev_login"),
 
     # The signed-in user
     path("accounts/me/", views.my_profile, name="my_profile"),

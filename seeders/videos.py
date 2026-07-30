@@ -50,12 +50,17 @@ class VideoSeeder(Seeder):
     name = "Videos"
 
     def run(self, templates=None, actor=None, audio_seconds=8, with_media=True,
-            with_video_files=True, **options):
+            with_video_files=True, fixtures=None, text_source=None, **options):
+        """``fixtures`` and ``text_source`` let a caller drive this with its own
+        content — ``seed_test_video`` passes generated specs and lorem ipsum, and
+        gets the same steps, assets and cost bookkeeping as the demo fixtures."""
         if not templates:
             self.fail("Templates must be seeded before videos.")
 
         self.audio_seconds = audio_seconds
         self.with_media = with_media
+        self.fixtures = VIDEO_FIXTURES if fixtures is None else list(fixtures)
+        self.text_source = text_source or self._default_text
         self.ffmpeg = (
             with_media and with_video_files and media.ffmpeg_available()
         )
@@ -66,8 +71,8 @@ class VideoSeeder(Seeder):
             )
 
         built = {}
-        for index, spec in enumerate(VIDEO_FIXTURES):
-            template = templates.get(spec["template"])
+        for index, spec in enumerate(self.fixtures):
+            template = spec.get("template_obj") or templates.get(spec["template"])
             if template is None:
                 self.skipped(f"{spec['key']} — template '{spec['template']}' not seeded")
                 continue
@@ -85,10 +90,10 @@ class VideoSeeder(Seeder):
         stage = spec["stage"]
         # A stable, receding creation time per fixture, so the list view has an order
         # that is not just "everything at once".
-        clock = timezone.now() - timedelta(days=len(VIDEO_FIXTURES) - index, hours=2)
+        clock = timezone.now() - timedelta(days=len(self.fixtures) - index, hours=2)
 
         chapter_count = spec.get("chapters", 3)
-        bodies, titles = self._chapter_text(index, chapter_count)
+        bodies, titles = self.text_source(index, chapter_count, spec)
         # The split step slices the finished script, so the script has to be exactly
         # the concatenation of the parts for the fixture to be coherent.
         script = "\n\n".join(bodies)
@@ -163,12 +168,25 @@ class VideoSeeder(Seeder):
         elif stage == "narrated":
             self._queue_render(video, clock)
 
-        note = {
-            "split": f"{len(chapters)} parts, images + narration pending",
-            "imaged": f"{len(chapters)} parts with images, narration pending",
-            "narrated": f"{len(chapters)} parts narrated and merged, render left to the app",
-            "completed": f"{len(chapters)} parts, fully rendered",
-        }[stage]
+        # Re-read before reporting or returning: _merge and _render update a re-read
+        # copy, so this local object's status and paths are stale by now. Returning
+        # the stale one made callers print "narration" for a finished render.
+        video = VideoRepository.get(video.pk)
+
+        if stage == "completed":
+            # Honest about what happened rather than what was asked for: _render bails
+            # without ffmpeg or without media to render from.
+            note = (
+                f"{len(chapters)} parts, fully rendered"
+                if video.final_video_path
+                else f"{len(chapters)} parts, render skipped"
+            )
+        else:
+            note = {
+                "split": f"{len(chapters)} parts, images + narration pending",
+                "imaged": f"{len(chapters)} parts with images, narration pending",
+                "narrated": f"{len(chapters)} parts narrated and merged, render left to the app",
+            }[stage]
         self._describe(video, spec, note)
         return video
 
@@ -177,7 +195,8 @@ class VideoSeeder(Seeder):
 
     # ---- Pieces ----
 
-    def _chapter_text(self, index, count):
+    def _default_text(self, index, count, spec):
+        """The demo fixtures' hand-written prose, cycled per chapter."""
         bodies, titles = [], []
         for n in range(count):
             bodies.append("\n\n".join(paragraphs_for(index + n, 3)))

@@ -1,11 +1,13 @@
 """Public pages, the signed-in user's own profile, and account administration."""
+from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth import login, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from .access import SESSION_ACCOUNT_KEY, Perm, context_for, requires_perm
 from .forms import (
@@ -18,7 +20,7 @@ from .forms import (
     RoleForm,
     UserProfileForm,
 )
-from .repositories import UserRepository
+from .repositories import MembershipRepository, UserRepository
 from .services import (
     AccessError,
     AccountRequestService,
@@ -35,6 +37,78 @@ class AccountLoginView(LoginView):
     template_name = "accounts/login.html"
     authentication_form = EmailAuthenticationForm
     redirect_authenticated_user = True
+
+    def get_context_data(self, **kwargs):
+        return {
+            **super().get_context_data(**kwargs),
+            "dev_logins": dev_login_choices(),
+            "dev_login_domain": settings.DEV_LOGIN_EMAIL_DOMAIN,
+        }
+
+
+def dev_login_allowed():
+    """Whether the development quick sign-in is available at all.
+
+    ``DEV_LOGIN_ENABLED`` is already computed as ``flag and DEBUG`` in settings; the
+    ``DEBUG`` check is repeated here on purpose, so the bypass stays shut even if some
+    other settings file sets the flag directly.
+    """
+    return bool(settings.DEBUG and settings.DEV_LOGIN_ENABLED)
+
+
+def dev_login_choices():
+    """Users offered by the development quick sign-in, or an empty list.
+
+    Empty whenever the feature is off, so a template can render the panel without
+    repeating the guard.
+    """
+    if not dev_login_allowed():
+        return []
+    users = UserRepository.with_email_domain(settings.DEV_LOGIN_EMAIL_DOMAIN)
+    return [
+        {
+            "user": user,
+            "roles": ", ".join(
+                f"{m.role.name} in {m.account.name}"
+                for m in MembershipRepository.for_user(user)
+            )
+            or ("System admin" if user.is_system_admin else "No account"),
+        }
+        for user in users.filter(is_active=True).order_by("email")
+    ]
+
+
+@require_POST
+def dev_login(request, user_id):
+    """Sign in as a seeded user without a password.
+
+    A complete authentication bypass, so it is guarded three ways: 404 unless both
+    ``DEBUG`` and ``DEV_LOGIN_ENABLED``, 404 unless the target's email is at the
+    configured throwaway domain, and POST-only so it cannot be triggered by a link
+    someone pastes.
+    """
+    if not dev_login_allowed():
+        raise Http404("Not found")
+
+    user = UserRepository.get_or_none(user_id)
+    domain = f"@{settings.DEV_LOGIN_EMAIL_DOMAIN}".lower()
+    if user is None or not user.is_active or not user.email.lower().endswith(domain):
+        raise Http404("Not found")
+
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    messages.warning(
+        request,
+        f"Signed in as {user.email} with the development quick sign-in — no password "
+        "was checked.",
+    )
+
+    if request.POST.get("next"):
+        return redirect(request.POST["next"])
+    # A system admin with no membership would land on the no-account dead end, which
+    # is correct but useless as a destination. Send them where they can act.
+    if user.is_system_admin and not MembershipRepository.for_user(user).exists():
+        return redirect(reverse("console:dashboard"))
+    return redirect(reverse("videos:list"))
 
 
 def home(request):

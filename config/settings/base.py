@@ -123,6 +123,20 @@ LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "videos:list"
 LOGOUT_REDIRECT_URL = "accounts:home"
 
+# ---- Development quick sign-in ----
+# One-click sign-in as a seeded user, with no password. Convenient locally and a
+# complete authentication bypass anywhere else, so it is deliberately hard to leave
+# on by accident:
+#
+#   * `and DEBUG` — the .env flag alone cannot enable it. Turning DEBUG off turns
+#     this off too, whatever the flag says.
+#   * DEV_LOGIN_EMAIL_DOMAIN limits it to users at one throwaway domain, so it can
+#     never sign you in as a real account even while enabled.
+#
+# The view 404s when disabled, and the buttons only render when it is on.
+DEV_LOGIN_ENABLED = _get_bool("DEV_LOGIN_ENABLED", False) and DEBUG
+DEV_LOGIN_EMAIL_DOMAIN = _get("DEV_LOGIN_EMAIL_DOMAIN", "dev.local")
+
 # Session hardening. Media and every page require a login now, so a leaked session
 # cookie is worth more than it used to be.
 SESSION_COOKIE_HTTPONLY = True

@@ -155,12 +155,40 @@ For local work, `python manage.py seed_development` does all that plus demo acco
 a user per role, and a video at every pipeline stage. See
 [`seeders.md`](seeders.md).
 
+## Development quick sign-in
+
+One click to sign in as a seeded user, with no password, from buttons on the sign-in
+page. It is a complete authentication bypass, so it is deliberately hard to leave on
+by accident:
+
+```
+DEV_LOGIN_ENABLED=True
+DEV_LOGIN_EMAIL_DOMAIN=dev.local
+```
+
+| Guard | Where |
+|---|---|
+| The `.env` flag alone cannot enable it — `DEV_LOGIN_ENABLED` is computed as `flag and DEBUG` | `config/settings/base.py` |
+| The view re-checks `DEBUG` itself, so setting the flag directly in another settings file still does not open it | `dev_login_allowed()` |
+| Only users at `DEV_LOGIN_EMAIL_DOMAIN` — it can never sign you in as a real account, even while enabled | `dev_login()` |
+| Inactive users are refused, and the domain must match the **end** of the address | `dev_login()` |
+| POST only, so a pasted link cannot sign anyone in | `@require_POST` |
+| 404 when disabled, and the buttons do not render | both |
+
+Every sign-in through it raises a warning message saying no password was checked, so
+it can never be mistaken for a normal session. Turning `DEBUG` off turns the whole
+thing off regardless of the flag.
+
+`apps/accounts/tests/test_dev_login.py` covers each guard, including a lookalike
+address (`dev.local@example.com`) being refused.
+
 ## Route map
 
 | Route | Gate |
 |---|---|
 | `/` | public landing page (signed-in users are sent to `/videos/`) |
 | `/accounts/login/`, `/accounts/logout/` | public |
+| `/accounts/dev-login/<id>/` | development only — 404 unless `DEBUG` **and** `DEV_LOGIN_ENABLED`, and only for `DEV_LOGIN_EMAIL_DOMAIN` users |
 | `/accounts/request/` | public — creates an inactive user plus a pending `AccountRequest` |
 | `/accounts/me/` | login — own name, password, and the account switcher |
 | `/accounts/switch/<id>/` | login, POST only, membership checked |
@@ -215,12 +243,13 @@ immediately — only public self-service requests need approval. They are flagge
 
 ## Tests
 
-124 tests, `python manage.py test`, plain `django.test.TestCase` and
+156 tests, `python manage.py test`, plain `django.test.TestCase` and
 `django.test.Client` — no extra dependency.
 
 | Module | Covers |
 |---|---|
-| `seeders/tests/test_seeders.py` | both seeders: idempotency, the DEBUG guard, `--fresh` scope, fixture invariants |
+| `apps/accounts/tests/test_dev_login.py` | every guard on the development quick sign-in |
+| `seeders/tests/test_seeders.py` | the seeders: idempotency, the DEBUG guard, `--fresh` scope, fixture invariants, lorem ipsum videos |
 | `apps/accounts/tests/test_access.py` | permission resolution, system-admin bypass, switching, inactive users and memberships |
 | `apps/accounts/tests/test_requests.py` | request → cannot sign in → approve → Owner; rejection; double review |
 | `apps/accounts/tests/test_user_management.py` | privilege escalation, last administrator, owner protection, role lifecycle |

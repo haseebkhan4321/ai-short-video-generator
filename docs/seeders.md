@@ -19,15 +19,18 @@ seeders/
 ├── base.py          Seeder base class: per-run tally, output helpers
 ├── data.py          every literal — templates, demo users, video fixtures
 ├── media.py         placeholder PNG / WAV / MP4 writers
+├── lorem.py         deterministic lorem ipsum
 ├── roles.py         RoleSeeder       (both environments)
 ├── accounts.py      UserSeeder, AccountSeeder, FirstAdminSeeder
 ├── templates.py     TemplateSeeder   (both environments)
 ├── videos.py        VideoSeeder      (development only)
+├── test_videos.py   TestVideoSeeder  (lorem ipsum, any stage and size)
 ├── production.py    ProductionSeeder
 ├── development.py   DevelopmentSeeder
 └── management/commands/
     ├── seed_production.py
     ├── seed_development.py
+    ├── seed_test_video.py   lorem ipsum videos on demand
     └── seed_templates.py    per-account starter templates
 ```
 
@@ -160,6 +163,46 @@ templates, and a template takes its videos, chapters, images, steps and API logs
 
 Files under `media/` are left alone. A seeder that deleted directories there could
 take a real render with it.
+
+## `seed_test_video`
+
+Throwaway videos filled with lorem ipsum, at any stage and any size. The development
+fixtures are hand-written and deliberately small; this is the other thing you want
+when checking how the UI behaves — a 14-part script reads nothing like a three-part
+one.
+
+```bash
+python manage.py seed_test_video --account midnight-studio
+python manage.py seed_test_video --account midnight-studio --count 3 --stage completed
+python manage.py seed_test_video --account midnight-studio --parts 14 --words 950
+python manage.py seed_test_video --account midnight-studio --purge
+```
+
+| Flag | Effect |
+|---|---|
+| `--account` | Required. Slug of the target account. |
+| `--count N` | How many to create (default 1). |
+| `--stage` | `draft`, `scripted`, `split`, `imaged`, `narrated`, `completed`, `failed` (default `split`). |
+| `--parts N` | Parts per video (default 4). |
+| `--words N` | Words per part (default 300). `--parts 14 --words 950` is about the size of a real 90-minute script. |
+| `--template` | Pin one template. Default spreads a batch across all of the account's templates. |
+| `--start N` | First index to number from (default 1). Re-running the same index is a no-op, so raise it to add more. |
+| `--no-media`, `--no-video-files`, `--audio-seconds` | As `seed_development`. |
+| `--purge` | Delete every lorem ipsum test video in the account. Leaves the hand-written fixtures alone. |
+
+It reuses `VideoSeeder`, so a generated video gets the same steps, costs, API call
+logs and placeholder assets as the demo ones — only the text differs.
+
+Two things worth knowing:
+
+**The text is deterministic.** Every `lorem.*` function takes a seed derived from the
+video's own index, so re-running the same command produces byte-identical text. That
+is what keeps the seeder idempotent (it matches an existing video by its premise) and
+makes a bug reproducible from the same command. Sentence and paragraph lengths still
+vary, because uniform paragraphs do not exercise the layout the way real prose does.
+
+**Everything it makes is marked.** Premises start with `[lorem]`, which is both how
+`--start` stays idempotent and how `--purge` finds its own output and nothing else.
 
 ## `seed_templates`
 

@@ -34,6 +34,7 @@ from seeders.data import DEMO_ACCOUNTS, DEV_PASSWORD, STARTER_TEMPLATES
 from seeders.development import DevelopmentSeeder
 from seeders.production import ProductionSeeder
 from seeders.roles import RoleSeeder
+from seeders.test_videos import STAGES
 
 ADMIN = {"email": "admin@example.com", "password": "seed-test-pass-1", "name": "A Admin"}
 
@@ -364,6 +365,132 @@ class DevelopmentSeederTests(TestCase):
                 | {m["email"] for spec in DEMO_ACCOUNTS for m in spec["members"]})
             + 1,
         )
+
+
+@override_settings(DEBUG=True)
+class LoremTestVideoTests(TestCase):
+    """``seed_test_video``: throwaway videos at a chosen stage and size.
+
+    DEBUG on because one case also runs the development seeder, which refuses
+    without it.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            email="owner@example.com", password="seed-test-pass-1"
+        )
+        _, self.account = ProductionSeeder()(
+            email=self.owner.email, account_name="Studio", with_templates=True,
+        )
+
+    def _run(self, **options):
+        options.setdefault("no_media", True)
+        call_command("seed_test_video", account=self.account.slug,
+                     stdout=StringIO(), **options)
+
+    def test_it_creates_a_video_of_the_requested_shape(self):
+        self._run(count=1, stage="split", parts=6, words=200)
+
+        video = Video.objects.get()
+        self.assertEqual(video.chapters.count(), 6)
+        self.assertEqual(video.status, "split")
+        # Word counts are approximate by design (paragraphs vary in length), so this
+        # checks the order of magnitude rather than an exact figure.
+        self.assertGreater(video.total_words, 6 * 150)
+        self.assertLess(video.total_words, 6 * 320)
+
+    def test_the_text_is_lorem_ipsum(self):
+        self._run(stage="split", parts=2, words=120)
+
+        video = Video.objects.get()
+        self.assertTrue(video.script.startswith("Lorem ipsum dolor sit amet"))
+        self.assertIn("[lorem]", video.premise)
+        self.assertIn("[lorem]", video.title)
+
+    def test_the_script_is_still_exactly_its_parts(self):
+        """The same coherence the demo fixtures keep: split slices the script."""
+        self._run(stage="split", parts=4, words=150)
+
+        video = Video.objects.get()
+        bodies = [c.body for c in video.chapters.order_by("chapter_number")]
+        self.assertEqual(video.script, "\n\n".join(bodies))
+
+    def test_the_same_index_always_gives_the_same_text(self):
+        """Determinism is what keeps the seeder idempotent and bugs reproducible."""
+        self._run(stage="split", parts=2, words=120)
+        first = Video.objects.get().script
+
+        Video.objects.all().delete()
+        self._run(stage="split", parts=2, words=120)
+
+        self.assertEqual(Video.objects.get().script, first)
+
+    def test_a_different_index_gives_different_text(self):
+        self._run(stage="split", parts=2, words=120)
+        self._run(stage="split", parts=2, words=120, start=9)
+
+        scripts = list(Video.objects.values_list("script", flat=True))
+
+        self.assertEqual(len(scripts), 2)
+        self.assertNotEqual(scripts[0], scripts[1])
+
+    def test_a_batch_spreads_across_the_accounts_templates(self):
+        self._run(count=3, stage="draft")
+
+        used = set(Video.objects.values_list("template_id", flat=True))
+        self.assertEqual(len(used), 3)
+
+    def test_one_template_can_be_pinned(self):
+        name = Template.objects.filter(account=self.account).first().name
+
+        self._run(count=2, stage="draft", template=name)
+
+        used = set(Video.objects.values_list("template__name", flat=True))
+        self.assertEqual(used, {name})
+
+    def test_re_running_the_same_index_creates_nothing(self):
+        self._run(count=2, stage="draft")
+        self._run(count=2, stage="draft")
+        self.assertEqual(Video.objects.count(), 2)
+
+    def test_start_adds_more(self):
+        self._run(count=2, stage="draft")
+        self._run(count=2, stage="draft", start=3)
+        self.assertEqual(Video.objects.count(), 4)
+
+    def test_every_stage_is_buildable(self):
+        for index, stage in enumerate(STAGES, start=1):
+            with self.subTest(stage=stage):
+                self._run(stage=stage, parts=2, words=80, start=index * 100)
+        self.assertEqual(Video.objects.count(), len(STAGES))
+
+    def test_the_failed_stage_is_retryable(self):
+        self._run(stage="failed", start=50)
+
+        video = Video.objects.get()
+        self.assertEqual(video.status, "failed")
+        self.assertTrue(video.error_message)
+        self.assertEqual(video.steps.get().status, StepStatus.FAILED)
+
+    def test_purge_removes_only_the_lorem_videos(self):
+        run_dev()  # the hand-written demo fixtures
+        demo = Video.objects.count()
+        self._run(count=2, stage="draft", start=200)
+        self.assertEqual(Video.objects.count(), demo + 2)
+
+        call_command("seed_test_video", account=self.account.slug,
+                     purge=True, stdout=StringIO())
+
+        self.assertEqual(Video.objects.count(), demo)
+        self.assertFalse(Video.objects.filter(premise__startswith="[lorem]").exists())
+
+    def test_an_unknown_account_is_refused(self):
+        with self.assertRaises(CommandError):
+            call_command("seed_test_video", account="nope", stdout=StringIO())
+
+    def test_an_unknown_template_is_refused(self):
+        with self.assertRaises(CommandError):
+            self._run(template="Does Not Exist")
 
 
 @override_settings(DEBUG=True)
