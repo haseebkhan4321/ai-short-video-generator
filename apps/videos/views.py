@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.contrib import messages
 from django.http import Http404, JsonResponse
@@ -5,7 +7,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from .forms import VideoCreateForm
-from .models import StepStatus, StepType
+from .models import StepStatus, StepType, VideoStatus
 from .services.currency import format_usd_as_pkr
 from .services.pipeline import (
     BudgetExceededError,
@@ -52,6 +54,14 @@ def _collapse_latest(raw_steps):
     return sorted(latest.values(), key=lambda s: s.created_at)
 
 
+def _step_label(step):
+    """Human label for a step, e.g. 'Images (part 3)' or 'Render'."""
+    label = step.get_step_type_display()
+    if step.chapter_id and step.chapter:
+        label += f" (part {step.chapter.chapter_number})"
+    return label
+
+
 STAGE_DEFS = [
     ("script", "Script"),
     ("split", "Split"),
@@ -93,6 +103,68 @@ def _compute_stages(video, chapters, steps):
     return stages
 
 
+def _pending_actions(parts):
+    """Batch actions the user can take right now, each tagged free/paid + cost.
+    Images are paid; narration is free (local)."""
+    img = [p for p in parts if p["image_step"]
+           and p["image_step"].status == StepStatus.PENDING_APPROVAL]
+    narr = [p for p in parts if p["narration_step"]
+            and p["narration_step"].status == StepStatus.PENDING_APPROVAL]
+    actions = []
+    if img:
+        actions.append({
+            "step_type": StepType.IMAGES,
+            "label": f"Generate all images ({len(img)} part{'s' if len(img) != 1 else ''})",
+            "paid": True,
+            "cost": sum((Decimal(p["image_step"].estimated_cost_usd) for p in img), Decimal("0")),
+        })
+    if narr:
+        actions.append({
+            "step_type": StepType.NARRATION,
+            "label": f"Generate all narration ({len(narr)} part{'s' if len(narr) != 1 else ''})",
+            "paid": False,
+            "cost": Decimal("0"),
+        })
+    return actions
+
+
+def _compute_next_step(video, parts, steps, has_active, actions):
+    """A single, plain-language 'what to do next' for the top of the page."""
+    if video.status == VideoStatus.FAILED:
+        return {"tone": "error", "title": "A step failed",
+                "detail": video.error_message
+                or "Retry the failed step from its part below, or in Technical details."}
+    if video.status == VideoStatus.COMPLETED and video.final_video_path:
+        return {"tone": "done", "title": "Your video is ready",
+                "detail": "The full video has finished rendering — it's at the top of the page."}
+
+    script_step = next((s for s in steps if s.step_type == StepType.SCRIPT), None)
+    if script_step and script_step.status == StepStatus.PENDING_APPROVAL:
+        return {"tone": "action", "title": "Approve the script to begin",
+                "detail": "This writes the full narration script from your premise. Paid step.",
+                "primary": {"url": reverse("videos:step_approve", args=[video.pk, script_step.pk]),
+                            "label": "Approve script", "paid": True,
+                            "cost": script_step.estimated_cost_usd}}
+    if not video.script:
+        return {"tone": "wait", "title": "Writing the script…",
+                "detail": "This runs automatically and updates live below."}
+
+    paid = [a for a in actions if a["paid"]]
+    if paid:
+        n = f"{len([p for p in parts if p['image_step'] and p['image_step'].status == StepStatus.PENDING_APPROVAL])}"
+        return {"tone": "action", "title": f"Generate images for {n} part(s)",
+                "detail": "Images are the only paid step here — narration and all rendering are free. "
+                          "Use the buttons below, or do one part at a time in its card."}
+    if actions:  # only free narration left
+        return {"tone": "action", "title": "Generate narration",
+                "detail": "Narration is free (runs locally). Use the button below, or do one part at a time."}
+    if has_active:
+        return {"tone": "wait", "title": "Working…",
+                "detail": "A step is running automatically. Progress shows live below."}
+    return {"tone": "wait", "title": "Finishing up…",
+            "detail": "All parts are done. Merging and the final render run automatically."}
+
+
 def video_detail(request, video_id):
     video = VideoService.get_video(video_id)
     if video is None:
@@ -101,6 +173,9 @@ def video_detail(request, video_id):
     # Backfill any missing per-part steps (old splits / part-by-part flow), then
     # kick any step left waiting (e.g. a free step whose executor now exists).
     PipelineService.ensure_asset_steps(video)
+    # Create any missing part-preview steps first, then let resume_waiting_steps be
+    # the single runner that claims and executes all APPROVED steps.
+    PipelineService.backfill_part_videos(video)
     PipelineService.resume_waiting_steps(video)
 
     chapters = VideoService.chapters_for(video_id)
@@ -124,22 +199,14 @@ def video_detail(request, video_id):
             "chapter": ch,
             "image_step": image_step,
             "narration_step": narration_step,
+            "render_step": cs.get(StepType.RENDER_PART),
             "pending_estimate": sum(float(x.estimated_cost_usd) for x in pending),
             "pending_count": len(pending),
         })
 
-    pending_by_type = {}
-    for step in steps:
-        if step.status == StepStatus.PENDING_APPROVAL and step.provider != "local":
-            bucket = pending_by_type.setdefault(
-                step.step_type,
-                {"label": step.get_step_type_display(), "count": 0, "estimate": 0},
-            )
-            bucket["count"] += 1
-            bucket["estimate"] += float(step.estimated_cost_usd)
-
-    batchable = {k: v for k, v in pending_by_type.items() if v["count"] > 1}
     has_active = any(s.status in ACTIVE_STEP_STATUSES for s in steps)
+    actions = _pending_actions(parts)
+    next_step = _compute_next_step(video, parts, steps, has_active, actions)
     signature = "|".join(f"{s.pk}:{s.status}" for s in steps)
 
     return render(
@@ -149,7 +216,8 @@ def video_detail(request, video_id):
             "video": video,
             "chapters": chapters,
             "steps": steps,
-            "batchable": batchable,
+            "actions": actions,
+            "next_step": next_step,
             "budget_cap": PipelineService.budget_cap(),
             "has_active": has_active,
             "initial_signature": signature,
@@ -167,12 +235,14 @@ def video_status(request, video_id):
     steps = _collapse_latest(list(VideoService.steps_for(video_id)))
     payload = {
         "video_status": video.status,
+        "video_status_display": video.get_status_display(),
         "active": any(s.status in ACTIVE_STEP_STATUSES for s in steps),
         # signature changes whenever a status changes or a step is added/removed
         "signature": "|".join(f"{s.pk}:{s.status}" for s in steps),
         "steps": [
             {
                 "id": s.pk,
+                "label": _step_label(s),
                 "status": s.status,
                 "status_display": s.get_status_display(),
                 "progress_current": s.progress_current,
@@ -224,12 +294,16 @@ def step_reject(request, video_id, step_id):
 
 
 def step_regenerate(request, video_id, step_id):
-    """Retry a failed/rejected step in place (resets the same row to pending)."""
+    """Regenerate a step. A failed/rejected step is reset in place; a completed one
+    gets a fresh pending copy (so the finished output stays until re-approved)."""
     if request.method != "POST":
         return redirect(reverse("videos:detail", args=[video_id]))
     step = _get_step_or_404(step_id)
     try:
-        PipelineService.retry_step(step)
+        if step.status == StepStatus.COMPLETED:
+            PipelineService.regenerate_step(step)
+        else:
+            PipelineService.retry_step(step)
         messages.success(
             request,
             f"{step.get_step_type_display()} reset to pending — review and approve.",

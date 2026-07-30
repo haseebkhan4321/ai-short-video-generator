@@ -86,7 +86,10 @@ class StepTypeNotImplemented(PipelineError):
 
 # --- Free vs paid ------------------------------------------------------------
 
-FREE_STEP_TYPES = {StepType.SPLIT, StepType.MERGE, StepType.RENDER, StepType.SUBTITLES}
+FREE_STEP_TYPES = {
+    StepType.SPLIT, StepType.RENDER_PART, StepType.MERGE, StepType.RENDER,
+    StepType.SUBTITLES,
+}
 
 
 def _run_steps_threaded(step_ids):
@@ -389,6 +392,9 @@ class PipelineService:
             PipelineService._create_narration_steps(video)
 
         elif step_type in (StepType.IMAGES, StepType.NARRATION):
+            # Once a part has both its images and narration, render its preview
+            # video (free/local) so parts can be watched before the whole video.
+            PipelineService._maybe_render_part(video, step.chapter_id)
             # Parts may finish in concurrent threads; a row lock ensures exactly one
             # of them creates the merge step.
             PipelineService._trigger_singleton_free(
@@ -397,6 +403,9 @@ class PipelineService:
                 on_create=lambda: VideoRepository.update(
                     video, status=VideoStatus.NARRATION),
             )
+
+        elif step_type == StepType.RENDER_PART:
+            pass  # per-part preview; does not advance the video-level pipeline
 
         elif step_type == StepType.MERGE:
             PipelineService._trigger_singleton_free(video, StepType.RENDER)
@@ -433,6 +442,38 @@ class PipelineService:
         )
 
     @staticmethod
+    def _maybe_render_part(video, chapter_id):
+        """Render a part's preview video once it has both images and narration.
+        Idempotent and concurrency-safe: a video row lock ensures a single
+        render_part step per chapter even when images/narration finish in
+        parallel threads."""
+        if chapter_id is None:
+            return None
+        step = None
+        with transaction.atomic():
+            Video.objects.select_for_update().get(pk=video.pk)
+            chapter = ChapterRepository.get(chapter_id)
+            has_images = chapter.images.exclude(image_path="").exists()
+            has_narration = bool(chapter.narration_audio_path)
+            exists = (
+                StepRepository.for_video(video.pk)
+                .filter(step_type=StepType.RENDER_PART, chapter_id=chapter_id)
+                .exists()
+            )
+            if has_images and has_narration and not exists:
+                step = StepRepository.create(
+                    video=video,
+                    chapter=chapter,
+                    step_type=StepType.RENDER_PART,
+                    provider=Provider.LOCAL,
+                    status=StepStatus.APPROVED,
+                    estimated_cost_usd=Decimal("0"),
+                )
+        if step is not None and has_executor(StepType.RENDER_PART):
+            PipelineService.run_step(step)
+        return step
+
+    @staticmethod
     def ensure_asset_steps(video):
         """Idempotently create any missing per-part image/narration steps. Backfills
         videos split under the old flow and supports part-by-part completion."""
@@ -443,6 +484,33 @@ class PipelineService:
         if ChapterRepository.for_video(video.pk).exists():
             PipelineService._create_image_steps(video)
             PipelineService._create_narration_steps(video)
+
+    @staticmethod
+    def backfill_part_videos(video):
+        """Create render_part steps (APPROVED, unrun) for parts that already have
+        both assets but no preview video yet (e.g. parts completed before this
+        feature). Does not run them itself — resume_waiting_steps, called right
+        after this on each load, claims and runs APPROVED steps exactly once, which
+        avoids a double-render race. Safe to call every load."""
+        chapters = ChapterRepository.for_video(video.pk)
+        with_step = PipelineService._chapters_with_step(video, StepType.RENDER_PART)
+        created = []
+        for chapter in chapters:
+            if chapter.pk in with_step:
+                continue
+            if not chapter.narration_audio_path:
+                continue
+            if not chapter.images.exclude(image_path="").exists():
+                continue
+            step = StepRepository.create(
+                video=video,
+                chapter=chapter,
+                step_type=StepType.RENDER_PART,
+                provider=Provider.LOCAL,
+                status=StepStatus.APPROVED,
+            )
+            created.append(step.pk)
+        return created
 
     @staticmethod
     def _create_and_maybe_run_free(video, step_type):

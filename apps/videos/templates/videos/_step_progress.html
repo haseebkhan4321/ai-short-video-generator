@@ -1,0 +1,16 @@
+{% comment %}
+Live progress widget for a running/approved step, updated in place by the
+detail-page poller. Include it with a `step` variable in context.
+{% endcomment %}
+<div class="step-progress" data-step="{{ step.pk }}">
+  <div class="muted" data-step-progress style="font-size:12px;">
+    {{ step.progress_message|default:"Working…" }}{% if step.progress_total %} ({{ step.progress_current }}/{{ step.progress_total }}){% endif %}
+  </div>
+  {% if step.progress_total %}
+    <div data-step-bar-wrap style="height:4px;max-width:220px;background:var(--border);border-radius:2px;margin-top:6px;">
+      <div data-step-bar style="height:100%;width:0;background:var(--accent);border-radius:2px;"></div>
+    </div>
+  {% else %}
+    <div class="progress-indeterminate" style="margin-top:6px;"></div>
+  {% endif %}
+</div>

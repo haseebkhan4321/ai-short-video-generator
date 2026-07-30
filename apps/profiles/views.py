@@ -8,7 +8,7 @@ from .services import ProfileService
 
 
 def profile_list(request):
-    profiles = ProfileService.list_profiles()
+    profiles = ProfileService.list_profiles_with_stats()
     return render(request, "profiles/list.html", {"profiles": profiles})
 
 
@@ -20,7 +20,11 @@ def profile_detail(request, profile_id):
     return render(
         request,
         "profiles/detail.html",
-        {"profile": profile, "videos": videos},
+        {
+            "profile": profile,
+            "videos": videos,
+            "cost_summary": ProfileService.cost_summary(profile),
+        },
     )
 
 

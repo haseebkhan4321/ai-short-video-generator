@@ -19,6 +19,7 @@ class StepType(models.TextChoices):
     SPLIT = "split", "Split into parts"
     IMAGES = "images", "Generate images"
     NARRATION = "narration", "Generate narration"
+    RENDER_PART = "render_part", "Render part video"
     MERGE = "merge", "Merge narration"
     RENDER = "render", "Render video"
     SUBTITLES = "subtitles", "Generate subtitles"
@@ -91,6 +92,8 @@ class Chapter(models.Model):
     narration_audio_path = models.CharField(max_length=500, blank=True)
     audio_start_seconds = models.FloatField(null=True, blank=True)
     audio_end_seconds = models.FloatField(null=True, blank=True)
+    # Per-part rendered preview (this part's images over its narration).
+    video_path = models.CharField(max_length=500, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

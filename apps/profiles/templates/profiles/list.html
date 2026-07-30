@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load video_extras %}
 {% block title %}Profiles{% endblock %}
 {% block content %}
   <div class="row" style="justify-content: space-between; align-items: center;">
@@ -10,7 +11,7 @@
     <div class="card">
       <table>
         <thead>
-          <tr><th>Name</th><th>Niche</th><th>Voice</th><th>Language</th><th>Videos</th><th></th></tr>
+          <tr><th>Name</th><th>Niche</th><th>Voice</th><th>Language</th><th>Videos</th><th>Spent</th><th></th></tr>
         </thead>
         <tbody>
           {% for profile in profiles %}
@@ -19,7 +20,8 @@
               <td>{{ profile.niche|default:"—" }}</td>
               <td>{{ profile.narrator_voice|default:"—" }}</td>
               <td>{{ profile.language }}</td>
-              <td>{{ profile.videos.count }}</td>
+              <td>{{ profile.video_count }}</td>
+              <td>{{ profile.total_cost|pkr }}</td>
               <td>
                 <a href="{% url 'profiles:edit' profile.pk %}">Edit</a>
               </td>

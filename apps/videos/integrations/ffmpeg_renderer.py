@@ -52,9 +52,13 @@ def make_image_clip(image_path, duration, out_path, w, h, fps, preset, crf, zoom
         f"zoompan=z='{zexpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
         f"d={frames}:s={w}x{h}:fps={fps},setsar=1,format=yuv420p"
     )
+    # `-t` MUST come after `-i` (an output option). Placed before `-i` it caps the
+    # looped INPUT to duration*fps frames, and zoompan then emits d frames PER input
+    # frame — a duration*fps multiplication that explodes a 6s clip into 900s.
     _run([
-        settings.FFMPEG_BINARY, "-y", "-loop", "1", "-t", f"{duration:.3f}",
+        settings.FFMPEG_BINARY, "-y", "-loop", "1",
         "-i", str(image_path), "-vf", vf, "-r", str(fps),
+        "-t", f"{duration:.3f}",
         "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
         "-pix_fmt", "yuv420p", str(out_path),
     ])

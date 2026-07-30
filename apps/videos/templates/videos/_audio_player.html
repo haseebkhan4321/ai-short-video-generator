@@ -1,0 +1,21 @@
+{# Custom dark-themed audio player. Usage: {% include "videos/_audio_player.html" with path=chapter.narration_audio_path %} #}
+<div class="player"{% if attrs %} {{ attrs }}{% endif %}>
+  <audio preload="metadata" src="/media/{{ path }}"></audio>
+  <button type="button" class="player-btn" data-play aria-label="Play">
+    <svg data-icon-play viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5l9 5.5-9 5.5z"/></svg>
+    <svg data-icon-pause viewBox="0 0 16 16" aria-hidden="true" style="display:none"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>
+  </button>
+  <span class="player-time" data-time>0:00 / 0:00</span>
+  <input class="player-seek" data-seek type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
+  <button type="button" class="player-rate" data-rate title="Playback speed">1&times;</button>
+  <button type="button" class="player-btn" data-mute aria-label="Mute">
+    <svg data-icon-vol viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2 6h2.6L9 2.6v10.8L4.6 10H2z"/>
+      <path d="M11 5.2a3.6 3.6 0 010 5.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <svg data-icon-muted viewBox="0 0 16 16" aria-hidden="true" style="display:none">
+      <path d="M2 6h2.6L9 2.6v10.8L4.6 10H2z"/>
+      <path d="M11 6l4 4M15 6l-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  </button>
+</div>

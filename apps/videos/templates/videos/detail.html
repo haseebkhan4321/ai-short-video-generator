@@ -28,6 +28,20 @@
     </div>
   {% endif %}
 
+  {# Live activity banner — populated/shown by the poller while a step runs. #}
+  <div id="activity-banner" class="card" style="display:none; border-color: var(--accent);">
+    <div class="row" style="align-items:center; gap:14px; flex-wrap:nowrap;">
+      <span class="spinner" aria-hidden="true"></span>
+      <div style="flex:1; min-width:0;">
+        <div><strong data-banner-label>Working…</strong></div>
+        <div class="muted" data-banner-msg style="font-size:13px;"></div>
+        <div data-banner-bar-wrap style="display:none; height:5px; background:var(--border); border-radius:3px; margin-top:8px;">
+          <div data-banner-bar style="height:100%; width:0; background:var(--accent); border-radius:3px; transition:width .3s;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="row" style="gap: 40px;">
       <div><div class="muted">Target length</div>{{ video.target_minutes }} min</div>
@@ -41,20 +55,6 @@
     <div style="margin-top:14px;"><div class="muted">Premise</div>{{ video.premise }}</div>
   </div>
 
-  {% if video.final_video_path %}
-    <div class="card">
-      <h2>Final video</h2>
-      <video controls style="width:100%;max-width:900px;" src="/media/{{ video.final_video_path }}"></video>
-    </div>
-  {% endif %}
-
-  {% if video.narration_audio_path %}
-    <div class="card">
-      <h2>Full narration</h2>
-      <audio controls style="width:100%;" src="/media/{{ video.narration_audio_path }}"></audio>
-    </div>
-  {% endif %}
-
   {% if video.script %}
     <div class="card">
       <details>
@@ -66,19 +66,57 @@
     </div>
   {% endif %}
 
-  {# ---- Batch approvals for fan-out stages ---- #}
-  {% if batchable %}
-    <div class="card" style="border-color: var(--amber);">
-      <h3 style="margin-top:0;">Batch approvals</h3>
-      {% for step_type, info in batchable.items %}
-        <form class="inline-form" method="post" action="{% url 'videos:batch_approve' video.pk %}">
-          {% csrf_token %}
-          <input type="hidden" name="step_type" value="{{ step_type }}">
-          <button type="submit" class="btn green">
-            Approve all {{ info.count }} {{ info.label|lower }} (~{{ info.estimate|pkr }})
-          </button>
-        </form>
-      {% endfor %}
+  {# ---- Next step: the single 'what do I do now?' panel ---- #}
+  {% if next_step %}
+    <div class="card next-step {{ next_step.tone }}">
+      <div class="row" style="align-items:flex-start; gap:16px; justify-content:space-between; flex-wrap:wrap;">
+        <div style="flex:1; min-width:220px;">
+          <div class="kicker">Next step</div>
+          <h3 style="margin:4px 0 6px;">{{ next_step.title }}</h3>
+          <div class="muted" style="font-size:14px;">{{ next_step.detail }}</div>
+        </div>
+        {% if next_step.primary or actions %}
+          <div style="display:flex; flex-direction:column; gap:8px; flex:0 0 auto;">
+            {% if next_step.primary %}
+              <form method="post" action="{{ next_step.primary.url }}">
+                {% csrf_token %}
+                <button class="btn green" type="submit">
+                  {{ next_step.primary.label }}
+                  {% if next_step.primary.paid %}<span class="cost-tag">{{ next_step.primary.cost|pkr }}</span>{% else %}<span class="cost-tag free">Free</span>{% endif %}
+                </button>
+              </form>
+            {% endif %}
+            {% for a in actions %}
+              <form method="post" action="{% url 'videos:batch_approve' video.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="step_type" value="{{ a.step_type }}">
+                <button class="btn {% if a.paid %}green{% else %}secondary{% endif %}" type="submit">
+                  {{ a.label }}
+                  {% if a.paid %}<span class="cost-tag">{{ a.cost|pkr }}</span>{% else %}<span class="cost-tag free">Free</span>{% endif %}
+                </button>
+              </form>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+      <div class="muted" style="font-size:12px; margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
+        You approve the <strong>script</strong> and <strong>images</strong> (paid), plus <strong>narration</strong> (free).
+        Splitting, per-part preview videos, merging and the final render all happen automatically.
+      </div>
+    </div>
+  {% endif %}
+
+  {% if video.final_video_path %}
+    <div class="card">
+      <h2>Final video</h2>
+      <video controls style="width:100%;max-width:900px;" src="/media/{{ video.final_video_path }}"></video>
+    </div>
+  {% endif %}
+
+  {% if video.narration_audio_path %}
+    <div class="card">
+      <h2>Full narration</h2>
+      {% include "videos/_audio_player.html" with path=video.narration_audio_path %}
     </div>
   {% endif %}
 
@@ -107,10 +145,25 @@
           {% if part.pending_count %}
             <form class="inline-form" method="post" action="{% url 'videos:part_approve' video.pk chapter.pk %}" style="margin-left:auto;">
               {% csrf_token %}
-              <button type="submit" class="btn green">Generate this part (~{{ part.pending_estimate|pkr }})</button>
+              <button type="submit" class="btn green">
+                {% if part.image_step.status == "pending_approval" and part.narration_step.status == "pending_approval" %}
+                  Generate this part<span class="cost-tag">images {{ part.pending_estimate|pkr }} · narration free</span>
+                {% elif part.image_step.status == "pending_approval" %}
+                  Generate images<span class="cost-tag">{{ part.pending_estimate|pkr }}</span>
+                {% else %}
+                  Generate narration<span class="cost-tag free">Free</span>
+                {% endif %}
+              </button>
             </form>
           {% endif %}
         </div>
+
+        {% if part.image_step.status == "running" or part.image_step.status == "approved" %}
+          <div style="margin-top:8px;">{% include "videos/_step_progress.html" with step=part.image_step %}</div>
+        {% endif %}
+        {% if part.narration_step.status == "running" or part.narration_step.status == "approved" %}
+          <div style="margin-top:8px;">{% include "videos/_step_progress.html" with step=part.narration_step %}</div>
+        {% endif %}
 
         {% if chapter.images.all %}
           <div class="row" style="margin-top:10px;">
@@ -121,8 +174,24 @@
             {% endfor %}
           </div>
         {% endif %}
-        {% if chapter.narration_audio_path %}
-          <audio controls style="width:100%;margin-top:10px;" src="/media/{{ chapter.narration_audio_path }}"></audio>
+
+        {% if chapter.video_path %}
+          {# Per-part preview: images panned over this part's narration (has audio). #}
+          <video controls preload="metadata"
+                 style="width:100%;max-width:760px;margin-top:10px;border-radius:8px;border:1px solid var(--border);background:#000;"
+                 src="/media/{{ chapter.video_path }}"></video>
+        {% elif part.render_step.status == "running" or part.render_step.status == "approved" %}
+          <div style="margin-top:10px;">
+            <div class="muted" style="font-size:12px;margin-bottom:4px;">Rendering part video…</div>
+            {% include "videos/_step_progress.html" with step=part.render_step %}
+          </div>
+          {% if chapter.narration_audio_path %}
+            <div style="margin-top:10px;">{% include "videos/_audio_player.html" with path=chapter.narration_audio_path %}</div>
+          {% endif %}
+        {% elif chapter.narration_audio_path %}
+          <div style="margin-top:10px;">
+            {% include "videos/_audio_player.html" with path=chapter.narration_audio_path %}
+          </div>
         {% endif %}
         <details style="margin-top:10px;">
           <summary style="cursor:pointer;" class="muted">Text</summary>
@@ -133,10 +202,13 @@
     {% endfor %}
   {% endif %}
 
-  {# ---- Steps timeline ---- #}
-  <h2>Steps</h2>
+  {# ---- Steps timeline (technical detail, collapsed by default) ---- #}
+  <details style="margin-top:10px;">
+    <summary style="cursor:pointer; font-size:15px; font-weight:600; color:var(--muted); padding:6px 0;">
+      Technical details ({{ steps|length }} step{{ steps|length|pluralize }})
+    </summary>
   {% if steps %}
-    <div class="card">
+    <div class="card" style="margin-top:10px;">
       <table>
         <thead>
           <tr><th>Step</th><th>Provider</th><th>Status</th><th>Est.</th><th>Actual</th><th>Actions</th></tr>
@@ -176,18 +248,13 @@
                     <button type="submit" class="btn secondary">Retry</button>
                   </form>
                 {% elif step.status == "approved" or step.status == "running" %}
-                  <div data-step-work>
-                    <div class="muted" data-step-progress style="font-size:12px;">
-                      {{ step.progress_message|default:"Working…" }}{% if step.progress_total %} ({{ step.progress_current }}/{{ step.progress_total }}){% endif %}
-                    </div>
-                    {% if step.progress_total %}
-                      <div data-step-bar-wrap style="height:4px;width:130px;background:var(--border);border-radius:2px;margin-top:6px;">
-                        <div data-step-bar style="height:100%;width:0;background:var(--accent);border-radius:2px;"></div>
-                      </div>
-                    {% else %}
-                      <div class="progress-indeterminate" style="margin-top:6px;"></div>
-                    {% endif %}
-                  </div>
+                  {% include "videos/_step_progress.html" with step=step %}
+                {% elif step.status == "completed" and step.provider != "local" %}
+                  <form class="inline-form" method="post" action="{% url 'videos:step_regenerate' video.pk step.pk %}"
+                        onsubmit="return confirm('Regenerate {{ step.get_step_type_display }}? This creates a new pending step you must approve (it will cost again).');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn secondary" title="Create a fresh pending copy">Regenerate</button>
+                  </form>
                 {% else %}
                   <span class="muted">—</span>
                 {% endif %}
@@ -200,46 +267,78 @@
   {% else %}
     <div class="card"><p class="muted">No steps yet.</p></div>
   {% endif %}
+  </details>
 
   <script>
     (function () {
-      var active = {{ has_active|yesno:"true,false" }};
-      if (!active) return;
       var statusUrl = "{% url 'videos:status' video.pk %}";
       var currentSig = "{{ initial_signature|escapejs }}";
 
-      function update(steps) {
+      function pct(cur, total) {
+        return Math.min(100, Math.round(100 * (cur || 0) / total)) + '%';
+      }
+
+      function updateSteps(steps) {
         steps.forEach(function (s) {
-          var row = document.querySelector('[data-step="' + s.id + '"]');
-          if (!row) return;
-          var line = row.querySelector('[data-step-progress]');
-          if (line) {
-            var txt = s.progress_message || '';
-            if (s.progress_total) txt += ' (' + s.progress_current + '/' + s.progress_total + ')';
-            line.textContent = txt;
-          }
-          var barWrap = row.querySelector('[data-step-bar-wrap]');
-          var bar = row.querySelector('[data-step-bar]');
-          if (bar && s.progress_total) {
-            if (barWrap) barWrap.style.display = '';
-            bar.style.width = Math.min(100, Math.round(100 * s.progress_current / s.progress_total)) + '%';
-          }
-          var badge = row.querySelector('[data-step-badge]');
+          // Progress widgets can appear in more than one place (part card + steps
+          // table), so update every matching one.
+          document.querySelectorAll('.step-progress[data-step="' + s.id + '"]').forEach(function (w) {
+            var line = w.querySelector('[data-step-progress]');
+            if (line) {
+              var txt = s.progress_message || 'Working…';
+              if (s.progress_total) txt += ' (' + s.progress_current + '/' + s.progress_total + ')';
+              line.textContent = txt;
+            }
+            var barWrap = w.querySelector('[data-step-bar-wrap]');
+            var bar = w.querySelector('[data-step-bar]');
+            if (bar && s.progress_total) {
+              if (barWrap) barWrap.style.display = '';
+              bar.style.width = pct(s.progress_current, s.progress_total);
+            }
+          });
+          var badge = document.querySelector('tr[data-step="' + s.id + '"] [data-step-badge]');
           if (badge) badge.textContent = s.status_display;
         });
+      }
+
+      function updateBanner(steps) {
+        var banner = document.getElementById('activity-banner');
+        if (!banner) return;
+        var running = steps.filter(function (s) { return s.status === 'running'; });
+        var queued = steps.filter(function (s) { return s.status === 'approved'; });
+        var shown = running[0] || queued[0];
+        if (!shown) { banner.style.display = 'none'; return; }
+        banner.style.display = '';
+        var extra = running.length + queued.length - 1;
+        var label = shown.label + (shown.status === 'approved' ? ' — queued' : '');
+        if (extra > 0) label += ' (+' + extra + ' more)';
+        banner.querySelector('[data-banner-label]').textContent = label;
+        var msg = shown.progress_message || 'Working…';
+        if (shown.progress_total) msg += ' (' + shown.progress_current + '/' + shown.progress_total + ')';
+        banner.querySelector('[data-banner-msg]').textContent = msg;
+        var bw = banner.querySelector('[data-banner-bar-wrap]');
+        var b = banner.querySelector('[data-banner-bar]');
+        if (shown.progress_total) { bw.style.display = ''; b.style.width = pct(shown.progress_current, shown.progress_total); }
+        else { bw.style.display = 'none'; }
       }
 
       function tick() {
         fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
           .then(function (r) { return r.json(); })
           .then(function (data) {
+            // A signature change means steps were added/removed or finished — reload
+            // to render the new UI (audio player, images, final video, buttons).
             if (data.signature !== currentSig) { location.reload(); return; }
-            update(data.steps);
+            updateSteps(data.steps);
+            updateBanner(data.steps);
             if (data.active) setTimeout(tick, 2000);
           })
           .catch(function () { setTimeout(tick, 3000); });
       }
-      setTimeout(tick, 1500);
+      // Always poll once; if something is (or becomes) active we keep going. This
+      // catches steps that auto-advance in the background (merge/render) even when
+      // the page was loaded while idle.
+      setTimeout(tick, 800);
     })();
   </script>
 {% endblock %}
