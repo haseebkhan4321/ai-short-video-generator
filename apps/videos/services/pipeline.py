@@ -2,13 +2,19 @@
 
 Every paid step is created as ``pending_approval`` with an estimated cost. Nothing
 calls a paid provider until ``approve_step`` runs it. Free/local steps (split,
-render) need no approval and are auto-run when their executor is available.
+render) need no approval and are queued as soon as their executor is available.
 
 Step executors are registered by the per-step service modules (milestones 4-8) via
 ``register_executor``. Each executor receives the GenerationStep and returns a
 ``StepResult``. This keeps the framework decoupled from provider specifics.
+
+Work runs in a Celery worker, not in the web process. ``enqueue`` is the only place
+work leaves a request, which makes it the one seam to mock in tests and the one place
+a dead broker has to be handled. Step status doubles as queue state:
+
+    APPROVED  authorized, waiting for a worker to claim it
+    RUNNING   a worker has claimed it (a compare-and-swap, so exactly one does)
 """
-import threading
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -84,6 +90,22 @@ class StepTypeNotImplemented(PipelineError):
         super().__init__(f"No executor registered for step type '{step_type}' yet.")
 
 
+class QueueUnavailableError(PipelineError):
+    """The broker could not be reached, so nothing was queued.
+
+    Raised rather than swallowed: a silently dropped task looks exactly like a step
+    that is about to start, and the user would sit watching a spinner forever.
+    """
+
+    def __init__(self, reason=""):
+        self.reason = reason
+        super().__init__(
+            "Could not reach the task queue, so nothing was started. Check that Redis "
+            "and a Celery worker are running."
+            + (f" ({reason})" if reason else "")
+        )
+
+
 # --- Free vs paid ------------------------------------------------------------
 
 FREE_STEP_TYPES = {
@@ -92,20 +114,38 @@ FREE_STEP_TYPES = {
 }
 
 
-def _run_steps_threaded(step_ids):
-    """Run one or more steps sequentially in a background thread with a fresh DB
-    connection (closed at the end to avoid leaking connections per thread)."""
-    from django.db import connections
-
-    try:
-        for step_id in step_ids:
-            step = StepRepository.get(step_id)
-            PipelineService.run_step(step)
-    finally:
-        connections.close_all()
-
-
 class PipelineService:
+    # ---- Dispatch ----
+
+    @staticmethod
+    def enqueue(step_ids):
+        """Hand approved steps to the worker queue.
+
+        The single place work leaves the web process, which is why it is also the
+        single place to mock in tests and the single place a dead broker is handled.
+
+        On broker failure the steps are left APPROVED — which is honestly what they
+        are, authorized but not started — so ``resume_waiting_steps`` will pick them
+        up once the queue is back, and the caller is told rather than left thinking
+        work began.
+        """
+        from ..tasks import run_step_task
+
+        ids = [sid for sid in step_ids if sid]
+        if not ids:
+            return []
+
+        queued = []
+        try:
+            for step_id in ids:
+                run_step_task.delay(step_id)
+                queued.append(step_id)
+        except Exception as exc:
+            # kombu raises its own OperationalError, and redis-py raises several
+            # connection errors; catching broadly here is deliberate because every one
+            # of them means the same thing to the caller: nothing was started.
+            raise QueueUnavailableError(str(exc)) from exc
+        return queued
     # ---- Video creation ----
 
     @staticmethod
@@ -166,11 +206,11 @@ class PipelineService:
 
     @staticmethod
     def approve_step_background(step, force=False, actor=None):
-        """Validate + mark approved synchronously, then run in a background thread
-        so the request returns immediately. Used by the web UI.
+        """Validate and approve synchronously, then queue the work so the request
+        returns immediately. Used by the web UI.
 
-        ``actor`` is recorded here rather than in the executor because the thread
-        that runs the step has no request and therefore no user.
+        ``actor`` is recorded here rather than in the executor because the worker that
+        runs the step has no request and therefore no user.
         """
         if step.status != StepStatus.PENDING_APPROVAL:
             raise StepNotActionableError("Step is not pending approval.")
@@ -183,9 +223,7 @@ class PipelineService:
             approved_at=timezone.now(),
             approved_by=actor,
         )
-        threading.Thread(
-            target=_run_steps_threaded, args=([step.pk],), daemon=True
-        ).start()
+        PipelineService.enqueue([step.pk])
         return step
 
     @staticmethod
@@ -211,9 +249,7 @@ class PipelineService:
                 approved_by=actor,
             )
             ids.append(step.pk)
-        threading.Thread(
-            target=_run_steps_threaded, args=(ids,), daemon=True
-        ).start()
+        PipelineService.enqueue(ids)
         return ids
 
     @staticmethod
@@ -241,9 +277,7 @@ class PipelineService:
                 approved_by=actor,
             )
             ids.append(step.pk)
-        threading.Thread(
-            target=_run_steps_threaded, args=(ids,), daemon=True
-        ).start()
+        PipelineService.enqueue(ids)
         return ids
 
     @staticmethod
@@ -286,28 +320,30 @@ class PipelineService:
 
     @staticmethod
     def resume_waiting_steps(video):
-        """Start any APPROVED steps whose executor is now available (e.g. a free
-        step that was created before its executor existed, or a job orphaned by a
-        server restart). Safe to call on every page load."""
+        """Re-queue any APPROVED steps whose executor is available.
+
+        Catches a free step created before its executor existed, and anything left
+        approved because the broker was down when it was authorized. Safe to call on
+        every page load: enqueueing twice is harmless because the worker claims with a
+        compare-and-swap, so only one run happens.
+
+        A broker that is still down is swallowed here rather than raised. This runs on
+        an ordinary page view, and failing the page over a background retry would be
+        the wrong trade — the next page load tries again.
+        """
         waiting = [
-            s
+            s.pk
             for s in StepRepository.for_video(video.pk).filter(
                 status=StepStatus.APPROVED
             )
             if has_executor(s.step_type)
         ]
-        ids = []
-        for step in waiting:
-            # Claim synchronously so a rapid second load won't double-start.
-            StepRepository.update(
-                step, status=StepStatus.RUNNING, started_at=timezone.now()
-            )
-            ids.append(step.pk)
-        if ids:
-            threading.Thread(
-                target=_run_steps_threaded, args=(ids,), daemon=True
-            ).start()
-        return ids
+        if not waiting:
+            return []
+        try:
+            return PipelineService.enqueue(waiting)
+        except QueueUnavailableError:
+            return []
 
     @staticmethod
     def update_progress(step, current=None, total=None, message=None):
@@ -494,8 +530,8 @@ class PipelineService:
                     status=StepStatus.APPROVED,
                     estimated_cost_usd=Decimal("0"),
                 )
-        if step is not None and has_executor(StepType.RENDER_PART):
-            PipelineService.run_step(step)
+        if step is not None:
+            PipelineService._queue_follow_on(step)
         return step
 
     @staticmethod
@@ -539,8 +575,8 @@ class PipelineService:
 
     @staticmethod
     def _create_and_maybe_run_free(video, step_type):
-        """Create a free/local step and run it immediately if its executor exists.
-        If the executor isn't built yet, the step waits as APPROVED."""
+        """Create a free/local step and queue it if its executor exists. If the
+        executor isn't built yet, the step waits as APPROVED."""
         step = StepRepository.create(
             video=video,
             step_type=step_type,
@@ -548,15 +584,14 @@ class PipelineService:
             status=StepStatus.APPROVED,
             estimated_cost_usd=Decimal("0"),
         )
-        if has_executor(step_type):
-            PipelineService.run_step(step)
+        PipelineService._queue_follow_on(step)
         return step
 
     @staticmethod
     def _trigger_singleton_free(video, step_type, ready=None, on_create=None):
         """Create a one-off free step (merge/render) exactly once, even when called
-        from concurrent part threads. A row lock on the video serializes the check.
-        The step is run AFTER the lock is released so encoding doesn't hold it."""
+        from concurrent workers. A row lock on the video serializes the check. The
+        step is queued AFTER the lock is released, so nothing holds it."""
         step = None
         with transaction.atomic():
             Video.objects.select_for_update().get(pk=video.pk)
@@ -572,8 +607,29 @@ class PipelineService:
                     status=StepStatus.APPROVED,
                     estimated_cost_usd=Decimal("0"),
                 )
-        if step is not None and has_executor(step_type):
-            PipelineService.run_step(step)
+        if step is not None:
+            PipelineService._queue_follow_on(step)
+        return step
+
+    @staticmethod
+    def _queue_follow_on(step):
+        """Queue a step that ``_advance`` just created.
+
+        A separate task rather than an inline call: the caller is itself a task, and
+        chaining a render onto the end of a narration would hold one worker slot for
+        the sum of both, hide the second step's progress behind the first, and put
+        both under one timeout.
+
+        A broker failure here is swallowed. The predecessor genuinely succeeded, so
+        failing it would be a lie; the step stays APPROVED and the next page view
+        re-queues it.
+        """
+        if not has_executor(step.step_type):
+            return None
+        try:
+            PipelineService.enqueue([step.pk])
+        except QueueUnavailableError:
+            return None
         return step
 
     @staticmethod

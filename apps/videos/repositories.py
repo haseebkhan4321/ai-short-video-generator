@@ -1,6 +1,6 @@
 """Data-access layer for videos and related models. The only place these ORM
 queries live."""
-from .models import ApiCallLog, Chapter, ChapterImage, GenerationStep, Video
+from .models import ApiCallLog, Chapter, ChapterImage, GenerationStep, StepStatus, Video
 
 
 class VideoRepository:
@@ -106,6 +106,40 @@ class StepRepository:
     @staticmethod
     def get(step_id):
         return GenerationStep.objects.select_related("video", "chapter").get(pk=step_id)
+
+    @staticmethod
+    def claim(step_id):
+        """Atomically take an APPROVED step for execution, or return None.
+
+        A compare-and-swap, not a read-then-write: the same step can be enqueued
+        twice (two page loads both calling resume_waiting_steps, or a broker
+        redelivery), and running a paid step twice would charge twice. Only the
+        caller whose UPDATE actually matched a row gets to run it.
+        """
+        from django.utils import timezone
+
+        changed = GenerationStep.objects.filter(
+            pk=step_id, status=StepStatus.APPROVED
+        ).update(status=StepStatus.RUNNING, started_at=timezone.now())
+        if not changed:
+            return None
+        return StepRepository.get(step_id)
+
+    @staticmethod
+    def by_status(status):
+        return GenerationStep.objects.filter(status=status)
+
+    @staticmethod
+    def stale_running(older_than):
+        """RUNNING steps last touched before ``older_than`` — abandoned by a worker
+        that died. Used by `manage.py unstick_steps`."""
+        return (
+            GenerationStep.objects.filter(
+                status=StepStatus.RUNNING, started_at__lt=older_than
+            )
+            .select_related("video")
+            .order_by("started_at")
+        )
 
     @staticmethod
     def get_in_video(step_id, video_id):

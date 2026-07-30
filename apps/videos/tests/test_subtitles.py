@@ -234,9 +234,9 @@ class PipelinePositionTests(TestCase):
         )
 
     def _advance_merge(self):
-        # Patch run_step: _trigger_singleton_free runs a free step as soon as it
+        # Patch enqueue: _trigger_singleton_free queues a free step as soon as it
         # creates it, and this test is about which step gets created.
-        with mock.patch.object(PipelineService, "run_step"):
+        with mock.patch.object(PipelineService, "enqueue"):
             PipelineService._advance(self.merge)
         return set(
             StepRepository.for_video(self.video.pk).values_list("step_type", flat=True)
@@ -264,7 +264,7 @@ class PipelinePositionTests(TestCase):
         )
         StepRepository.update(subtitles, status=StepStatus.COMPLETED)
 
-        with mock.patch.object(PipelineService, "run_step"):
+        with mock.patch.object(PipelineService, "enqueue"):
             PipelineService._advance(subtitles)
 
         self.assertTrue(

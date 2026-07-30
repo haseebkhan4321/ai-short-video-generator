@@ -199,6 +199,41 @@ IMAGES_PER_PART = _get_int("IMAGES_PER_PART", 4)
 VIDEO_WIDTH = _get_int("VIDEO_WIDTH", 1920)
 VIDEO_HEIGHT = _get_int("VIDEO_HEIGHT", 1080)
 
+# ---- Task queue (Celery + Redis) ----
+# Approved steps are handed to a worker rather than run in the web process, so a long
+# render survives a server restart and is visible outside the page that started it.
+REDIS_URL = _get("REDIS_URL", "redis://127.0.0.1:6379/0")
+CELERY_BROKER_URL = _get("CELERY_BROKER_URL", REDIS_URL)
+
+# No result backend on purpose: every piece of state the UI needs (status, progress,
+# cost, errors) already lives on GenerationStep, and the detail page polls the
+# database. A second store would be a second source of truth to keep in sync.
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+# One task at a time per worker process, and do not hoard work: steps are long and
+# unevenly sized, so prefetching would leave a queue behind one slow render.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# acks_late is deliberately OFF. With it on, a worker that dies mid-task has the task
+# redelivered — and redelivering a paid step risks a second OpenAI charge for work
+# that may already have completed. The step is left RUNNING instead, and
+# `manage.py unstick_steps` turns anything abandoned into a failure a human can retry.
+CELERY_TASK_ACKS_LATE = False
+CELERY_WORKER_MAX_TASKS_PER_CHILD = _get_int("CELERY_WORKER_MAX_TASKS_PER_CHILD", 40)
+
+# Generous: a two-hour narration render is a normal task here, not a runaway one.
+CELERY_TASK_SOFT_TIME_LIMIT = _get_int("CELERY_TASK_SOFT_TIME_LIMIT", 4 * 3600)
+CELERY_TASK_TIME_LIMIT = _get_int("CELERY_TASK_TIME_LIMIT", 4 * 3600 + 900)
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Fail fast when enqueueing from a web request: the user is waiting, and a dead broker
+# should say so rather than hang the page.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"max_retries": 1}
+
 # ---- Subtitles (local Whisper, free and optional) ----
 # Off by default: long-form narration videos rarely burn captions, and the first run
 # downloads the model weights. Enabling it inserts a free step between merge and

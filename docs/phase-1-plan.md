@@ -93,7 +93,11 @@ Long-form specifics:
 - **Part-by-part or stage-by-stage**: images and narration are both created right after the split (they only depend on the part text), so you can finish one part fully before the next, or run a whole stage at once. Merge + render fire automatically once every part has both.
 - **Budget cap**: `MAX_COST_PER_VIDEO_PKR` in settings (shown/added in PKR). Since narration is now local/free, the dominant cost is images; the cap mainly guards the image stage.
 
-Because every paid step waits on a human click, Phase 1 needs **no background queue**: an approved step runs synchronously (long steps like full narration/render run via a management command or a long-timeout request). Celery arrives in a later phase.
+Because every paid step waits on a human click, Phase 1 needed **no background queue**: an approved step ran in a daemon thread inside the web process.
+
+> **Superseded.** That thread is gone: approved steps are Celery tasks now, so a
+> 40-minute render survives a server restart instead of dying with it. See
+> [`queue.md`](queue.md).
 
 ## Cost reality for long-form (why the gate matters)
 
@@ -362,5 +366,5 @@ Definition of done for Phase 1: from a premise + target minutes, a user approves
 
 ## Later phases (recorded for direction, not now)
 
-- **Phase 2**: thumbnail generation, YouTube Data API upload with OAuth, Celery + Redis so long narration/render run in a real queue, full-pipeline budget approval up front.
+- **Phase 2**: thumbnail generation, YouTube Data API upload with OAuth, ~~Celery + Redis so long narration/render run in a real queue~~ (**done** — see [`queue.md`](queue.md)), full-pipeline budget approval up front.
 - **Phase 3**: scheduling, multiple videos per profile, analytics, Docker Compose, object storage (S3/R2), cheaper/local image models (e.g. Flux), optional premium TTS or AI video clips, cross-posting.

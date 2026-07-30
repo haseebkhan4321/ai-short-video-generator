@@ -4,6 +4,14 @@ mysqlclient>=2.2
 python-dotenv>=1.0
 openai>=2.0
 
+# Task queue. Approved steps run in a worker, not the web process, so a long render
+# survives a server restart. Needs a Redis server (Laragon ships one).
+celery>=5.4
+# Capped below 6: redis-py 6+ negotiates RESP3 with a HELLO handshake, which Redis
+# server 5.x does not understand ("unknown command HELLO"). Laragon ships 5.0.14.
+# Raise this cap only alongside a Redis 6+ server.
+redis>=5,<6
+
 # Narration (local, free) + audio merge
 kokoro-onnx>=0.5      # bundles espeak-ng via espeakng-loader; no system install
 numpy>=2.0

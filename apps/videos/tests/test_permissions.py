@@ -311,7 +311,7 @@ class SpendAuditTests(TestCase):
         self.assertEqual(self.video.created_by_id, self.owner.pk)
 
     def test_the_approver_is_recorded_on_the_step(self):
-        with mock.patch("apps.videos.services.pipeline.threading.Thread"):
+        with mock.patch.object(PipelineService, "enqueue"):
             PipelineService.approve_step_background(self.script_step, actor=self.owner)
 
         self.script_step.refresh_from_db()
@@ -319,7 +319,7 @@ class SpendAuditTests(TestCase):
         self.assertEqual(self.script_step.status, StepStatus.APPROVED)
 
     def test_a_retry_clears_the_previous_approver(self):
-        with mock.patch("apps.videos.services.pipeline.threading.Thread"):
+        with mock.patch.object(PipelineService, "enqueue"):
             PipelineService.approve_step_background(self.script_step, actor=self.owner)
         self.script_step.refresh_from_db()
         self.script_step.status = StepStatus.FAILED

@@ -16,6 +16,7 @@ from .services.currency import format_usd_as_pkr
 from .services.pipeline import (
     BudgetExceededError,
     PipelineService,
+    QueueUnavailableError,
     StepNotActionableError,
     StepTypeNotImplemented,
 )
@@ -365,10 +366,13 @@ def step_approve(request, video_id, step_id):
             step, force=_allowed_force(request), actor=request.user
         )
         messages.success(
-            request, f"Approved: {step.get_step_type_display()} — running in background."
+            request, f"Approved: {step.get_step_type_display()} — queued."
         )
     except BudgetExceededError as exc:
         messages.warning(request, _budget_hint(request, exc, "Approve anyway"))
+    except QueueUnavailableError as exc:
+        # The step stays approved, so it starts on its own once the queue is back.
+        messages.error(request, f"{exc} It stays approved and will start once it is.")
     except StepTypeNotImplemented as exc:
         messages.error(request, str(exc))
     except StepNotActionableError as exc:
@@ -426,13 +430,14 @@ def part_approve(request, video_id, chapter_id):
         )
         if approved:
             messages.success(
-                request,
-                f"Generating this part ({len(approved)} step(s)) in the background.",
+                request, f"Queued this part ({len(approved)} step(s))."
             )
         else:
             messages.info(request, "Nothing pending for this part.")
     except BudgetExceededError as exc:
         messages.warning(request, _budget_hint(request, exc, "Generate anyway"))
+    except QueueUnavailableError as exc:
+        messages.error(request, f"{exc} They stay approved and will start once it is.")
     except StepTypeNotImplemented as exc:
         messages.error(request, str(exc))
     return redirect(reverse("videos:detail", args=[video_id]))
@@ -455,11 +460,11 @@ def step_batch_approve(request, video_id):
         approved = PipelineService.batch_approve_background(
             video, step_type, force=_allowed_force(request), actor=request.user
         )
-        messages.success(
-            request, f"Approved {len(approved)} step(s) — running in background."
-        )
+        messages.success(request, f"Approved and queued {len(approved)} step(s).")
     except BudgetExceededError as exc:
         messages.warning(request, _budget_hint(request, exc, "Approve all anyway"))
+    except QueueUnavailableError as exc:
+        messages.error(request, f"{exc} They stay approved and will start once it is.")
     except StepTypeNotImplemented as exc:
         messages.error(request, str(exc))
     return redirect(reverse("videos:detail", args=[video_id]))
