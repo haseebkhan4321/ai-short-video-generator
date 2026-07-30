@@ -21,6 +21,23 @@ class TTSResult:
     characters: int = 0
 
 
+@dataclass
+class Cue:
+    """One subtitle cue: start and end in seconds, and its text."""
+
+    start: float
+    end: float
+    text: str
+
+
+@dataclass
+class TranscriptionResult:
+    cues: list
+    language: str = ""
+    model: str = ""
+    duration: float = 0.0
+
+
 class LLMProvider(ABC):
     """Text generation (chat completion)."""
 
@@ -46,6 +63,20 @@ class TTSProvider(ABC):
 
     @abstractmethod
     def synthesize(self, text, voice_id):
+        raise NotImplementedError
+
+
+class TranscriptionProvider(ABC):
+    """Speech to timed text (used by the subtitles step, milestone 10).
+
+    Implementations yield cues progressively rather than returning them all at once,
+    so a long track can report progress while it transcribes. Callers that want the
+    whole thing can just build a list.
+    """
+
+    @abstractmethod
+    def transcribe(self, audio_path, language=None, on_progress=None):
+        """Return a TranscriptionResult. ``on_progress(seconds_done)`` if given."""
         raise NotImplementedError
 
 

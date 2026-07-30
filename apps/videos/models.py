@@ -69,6 +69,11 @@ class Video(models.Model):
     duration_seconds = models.FloatField(null=True, blank=True)
 
     narration_audio_path = models.CharField(max_length=500, blank=True)
+    subtitles_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="SRT under media/, produced by the optional subtitles step.",
+    )
     final_video_path = models.CharField(max_length=500, blank=True)
 
     total_cost_usd = models.DecimalField(

@@ -27,10 +27,12 @@ Two deliberate choices:
 """
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
 
+from apps.videos.integrations.base import Cue
 from apps.videos.models import Provider, StepStatus, StepType, VideoStatus
 from apps.videos.repositories import (
     ApiCallLogRepository,
@@ -40,6 +42,7 @@ from apps.videos.repositories import (
     VideoRepository,
 )
 from apps.videos.services.cost_estimator import CostEstimator
+from apps.videos.services.subtitle_service import to_srt
 
 from . import media
 from .base import Seeder
@@ -408,6 +411,31 @@ class VideoSeeder(Seeder):
         )
         self._local_step(
             video, StepType.MERGE, clock, parts=len(parts), seconds=round(total, 2)
+        )
+        self._subtitles(video, parts, offsets, clock)
+
+    def _subtitles(self, video, chapters, offsets, clock):
+        """A cue per part, from the offsets the merge just measured.
+
+        Written whenever subtitles are enabled, so a seeded video looks like one that
+        ran the real step. Not transcribed: that needs the Whisper model, and a fixture
+        should not download 150MB or spend a minute on placeholder audio.
+        """
+        if not settings.SUBTITLES_ENABLED:
+            return
+
+        cues = [
+            Cue(start=start, end=end, text=(chapter.title or f"Part {chapter.chapter_number}"))
+            for chapter, (start, end) in zip(chapters, offsets)
+        ]
+        rel = f"videos/{video.pk}/subtitles.srt"
+        out = Path(settings.MEDIA_ROOT) / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(to_srt(cues), encoding="utf-8")
+
+        VideoRepository.update(video, subtitles_path=rel)
+        self._local_step(
+            video, StepType.SUBTITLES, clock, cues=len(cues), model="seeded"
         )
 
     def _queue_render(self, video, clock):

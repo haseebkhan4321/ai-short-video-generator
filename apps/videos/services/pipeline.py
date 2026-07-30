@@ -425,6 +425,14 @@ class PipelineService:
             pass  # per-part preview; does not advance the video-level pipeline
 
         elif step_type == StepType.MERGE:
+            # Subtitles sit between merge and render when enabled: the render can burn
+            # the captions in, so the SRT has to exist first.
+            if settings.SUBTITLES_ENABLED and has_executor(StepType.SUBTITLES):
+                PipelineService._trigger_singleton_free(video, StepType.SUBTITLES)
+            else:
+                PipelineService._trigger_singleton_free(video, StepType.RENDER)
+
+        elif step_type == StepType.SUBTITLES:
             PipelineService._trigger_singleton_free(video, StepType.RENDER)
 
         elif step_type == StepType.RENDER:

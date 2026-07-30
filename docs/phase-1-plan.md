@@ -348,8 +348,15 @@ and role management, and a system console — see [`rbac.md`](rbac.md).
 | 6 | Images step | OpenAI Images, N per part, 16:9, saved to media, shown per part |
 | 7 | Narration step | Kokoro (local) per part -> part_XX.wav, merge -> narration.wav, per-part offsets via sample counts |
 | 8 | Render step | FFmpeg: per part, its images Ken-Burns-panned across that part's audio span, crossfades, ambient music ducked under narration, 1920x1080 final.mp4 |
-| 9 | Polish | Status badges, error surfacing, regenerate buttons, per-profile cost totals, end-to-end run of one full long-form video |
+| 9 | Polish | Status badges, error surfacing, regenerate buttons, per-template cost totals, end-to-end run of one full long-form video |
 | 10 | Optional subtitles | Local faster-whisper SRT + optional burned captions (off by default) |
+
+Milestone 10 as built: a free `subtitles` step between merge and render, transcribing
+the merged narration with faster-whisper and writing `media/videos/<id>/subtitles.srt`.
+`SUBTITLES_ENABLED` inserts the step; `BURN_SUBTITLES` additionally draws the captions
+into the video, which costs one extra re-encode of the silent cut. Transcribed rather
+than derived from the script, because only the audio carries timings — a caption track
+built from the script would drift wherever the TTS chunked a sentence differently.
 
 Definition of done for Phase 1: from a premise + target minutes, a user approves the paid steps (script, images), generates narration (free, Kokoro) part-by-part or in batch, and the narration is merged and rendered into a watchable 1-2 hour `final.mp4` on disk, with every paid step pre-approved and costs shown in PKR.
 

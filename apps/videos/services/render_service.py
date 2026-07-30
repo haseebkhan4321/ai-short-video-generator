@@ -169,6 +169,21 @@ def run_render_step(step):
     video_only = render_dir / "video_only.mp4"
     ff.concat_clips(clips, render_dir / "list.txt", video_only)
 
+    burned = False
+    if settings.BURN_SUBTITLES and video.subtitles_path:
+        srt = Path(settings.MEDIA_ROOT) / video.subtitles_path
+        if srt.is_file():
+            PipelineService.update_progress(
+                step, current=total_units + 1, message="Burning in captions..."
+            )
+            captioned = render_dir / "video_captioned.mp4"
+            ff.burn_subtitles(
+                video_only, srt, captioned, preset, crf,
+                font_size=settings.SUBTITLE_FONT_SIZE,
+            )
+            video_only = captioned
+            burned = True
+
     PipelineService.update_progress(
         step, current=total_units + 2, message="Adding narration..."
     )
@@ -191,6 +206,7 @@ def run_render_step(step):
             "clips": len(clips),
             "seconds": video.duration_seconds,
             "resolution": f"{w}x{h}",
+            "captions_burned": burned,
         },
     )
 

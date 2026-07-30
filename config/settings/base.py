@@ -199,6 +199,20 @@ IMAGES_PER_PART = _get_int("IMAGES_PER_PART", 4)
 VIDEO_WIDTH = _get_int("VIDEO_WIDTH", 1920)
 VIDEO_HEIGHT = _get_int("VIDEO_HEIGHT", 1080)
 
+# ---- Subtitles (local Whisper, free and optional) ----
+# Off by default: long-form narration videos rarely burn captions, and the first run
+# downloads the model weights. Enabling it inserts a free step between merge and
+# render, so the SRT exists before the render can burn it in.
+SUBTITLES_ENABLED = _get_bool("SUBTITLES_ENABLED", False)
+BURN_SUBTITLES = _get_bool("BURN_SUBTITLES", False)
+WHISPER_MODEL = _get("WHISPER_MODEL", "base")  # tiny | base | small | medium | large-v3
+WHISPER_DEVICE = _get("WHISPER_DEVICE", "cpu")
+WHISPER_COMPUTE_TYPE = _get("WHISPER_COMPUTE_TYPE", "int8")
+WHISPER_BEAM_SIZE = _get_int("WHISPER_BEAM_SIZE", 1)
+# Characters per caption line. Two lines max; longer runs off a 16:9 frame.
+SUBTITLE_LINE_WIDTH = _get_int("SUBTITLE_LINE_WIDTH", 42)
+SUBTITLE_FONT_SIZE = _get_int("SUBTITLE_FONT_SIZE", 24)
+
 # ---- Render (ffmpeg) ----
 # Binaries: "ffmpeg"/"ffprobe" if on PATH, or absolute paths via .env.
 FFMPEG_BINARY = _get("FFMPEG_BINARY", "ffmpeg")

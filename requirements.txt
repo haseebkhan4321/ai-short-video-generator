@@ -9,11 +9,13 @@ kokoro-onnx>=0.5      # bundles espeak-ng via espeakng-loader; no system install
 numpy>=2.0
 soundfile>=0.13
 
+# Subtitles (local, free, optional — SUBTITLES_ENABLED=False by default)
+# Imported lazily, so an install without it works normally and simply cannot run the
+# subtitles step. The first run downloads the model weights (~150MB for "base").
+faster-whisper>=1.0
+
 # Kokoro model files (not pip): place under assets/kokoro/
 #   kokoro-v1.0.onnx, voices-v1.0.bin
 #   from https://github.com/thewh1teagle/kokoro-onnx/releases (model-files-v1.0)
 #
 # System binary (not pip): ffmpeg + ffprobe for the render step (path in .env).
-#
-# Added in later milestones:
-# faster-whisper>=1.0   # local subtitles (milestone 10, optional)

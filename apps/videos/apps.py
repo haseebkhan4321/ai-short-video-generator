@@ -12,4 +12,5 @@ class VideosConfig(AppConfig):
         from .services import split_service  # noqa: F401
         from .services import image_service  # noqa: F401
         from .services import narration_service  # noqa: F401
+        from .services import subtitle_service  # noqa: F401
         from .services import render_service  # noqa: F401

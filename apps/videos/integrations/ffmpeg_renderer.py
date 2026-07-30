@@ -1,14 +1,16 @@
 """Thin ffmpeg/ffprobe wrappers used by the render step."""
+import shutil
 import subprocess
+from pathlib import Path
 
 from django.conf import settings
 
 from .base import ProviderError
 
 
-def _run(cmd):
+def _run(cmd, cwd=None):
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     except FileNotFoundError as exc:
         raise ProviderError(
             f"'{cmd[0]}' not found. Install ffmpeg and put it on PATH, or set "
@@ -82,6 +84,42 @@ def concat_clips(clip_paths, list_file, out_path):
         settings.FFMPEG_BINARY, "-y", "-f", "concat", "-safe", "0",
         "-i", str(list_file), "-c", "copy", str(out_path),
     ])
+
+
+def burn_subtitles(video_path, srt_path, out_path, preset, crf, font_size=24):
+    """Re-encode ``video_path`` with the SRT burned in.
+
+    A re-encode is unavoidable: the render concatenates pre-encoded clips with
+    ``-c:v copy``, and drawing pixels onto them means decoding and encoding once.
+    Applied to the silent video, before the audio mux, so the audio is never touched.
+
+    ffmpeg's ``subtitles=`` filter takes a filename inside a filtergraph, where a
+    Windows path is a minefield: the drive colon separates filter options and the
+    backslashes are escapes. Rather than escaping it, both files are staged in one
+    directory and ffmpeg is run there with bare relative names.
+    """
+    work = Path(out_path).parent
+    work.mkdir(parents=True, exist_ok=True)
+    staged_srt = work / "burn.srt"
+    shutil.copyfile(str(srt_path), str(staged_srt))
+
+    style = (
+        f"FontName=Arial,FontSize={font_size},PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H90000000,BorderStyle=3,Outline=2,Shadow=0,"
+        "Alignment=2,MarginV=48"
+    )
+    _run(
+        [
+            settings.FFMPEG_BINARY, "-y",
+            "-i", str(Path(video_path).name),
+            "-vf", f"subtitles={staged_srt.name}:force_style='{style}'",
+            "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
+            "-pix_fmt", "yuv420p", "-an",
+            str(Path(out_path).name),
+        ],
+        cwd=str(work),
+    )
+    staged_srt.unlink(missing_ok=True)
 
 
 def mux_audio(video_path, audio_path, out_path, music_path=None, music_vol="0.08"):

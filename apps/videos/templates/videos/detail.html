@@ -118,9 +118,20 @@
         <div class="panel">
           <div class="panel-head">
             <h2>Full narration</h2>
-            <div class="right"><span class="badge plain">{{ video.duration_seconds|duration }}</span></div>
+            <div class="right">
+              {% if video.subtitles_path %}
+                <a class="btn quiet sm" href="/media/{{ video.subtitles_path }}" download>Download SRT</a>
+              {% endif %}
+              <span class="badge plain">{{ video.duration_seconds|duration }}</span>
+            </div>
           </div>
           <div class="panel-body">
+            {% comment %}
+            The SRT is attached as a WebVTT-less <track>-free extra: browsers cannot
+            caption an <audio> element, so it is a download link above rather than a
+            track here. The captions are visible in the final video when
+            BURN_SUBTITLES is on.
+            {% endcomment %}
             {% include "videos/_audio_player.html" with path=video.narration_audio_path %}
           </div>
         </div>
@@ -345,6 +356,12 @@
             <div class="stat-row"><dt>Actual length</dt><dd>{{ video.duration_seconds|duration }}</dd></div>
             <div class="stat-row"><dt>Words</dt><dd>{{ video.total_words|default:"—" }}</dd></div>
             <div class="stat-row"><dt>Parts</dt><dd>{{ parts|length|default:"—" }}</dd></div>
+            {% if video.subtitles_path %}
+              <div class="stat-row">
+                <dt>Subtitles</dt>
+                <dd><a href="/media/{{ video.subtitles_path }}" download>SRT</a></dd>
+              </div>
+            {% endif %}
           </dl>
         </div>
       </div>

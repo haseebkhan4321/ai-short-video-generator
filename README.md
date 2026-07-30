@@ -21,6 +21,7 @@ the original brief.
 - Django 5.2 (repository pattern: views -> services -> repositories -> ORM)
 - MySQL (Laragon)
 - OpenAI (script + images), Kokoro TTS (narration, local/free), FFmpeg (render, local)
+- faster-whisper for optional subtitles (local/free, `SUBTITLES_ENABLED=False` by default)
 - Custom `accounts.User` (email login), account-scoped roles, no third-party auth package
 - Local storage only in Phase 1 (no Docker, S3, Celery, or YouTube upload)
 
@@ -96,8 +97,8 @@ docs/              Plan, RBAC model, seeders, brief
 .venv\Scripts\python manage.py test
 ```
 
-156 tests covering permission resolution, account isolation, the two spend gates, the
-account-request flow, the seeders, and the development sign-in guards. Plain
+179 tests covering permission resolution, account isolation, the two spend gates, the
+account-request flow, the seeders, the development sign-in guards, and subtitles. Plain
 `django.test.TestCase` — no extra dependency.
 
 ## Build status
@@ -110,8 +111,8 @@ account-request flow, the seeders, and the development sign-in guards. Plain
 - [x] Milestone 6: images step (OpenAI)
 - [x] Milestone 7: narration step (Kokoro, local/free) + merge
 - [x] Milestone 8: render step (FFmpeg)
-- [ ] Milestone 9: polish + end-to-end
-- [ ] Milestone 10: optional subtitles (local Whisper)
+- [x] Milestone 9: polish + end-to-end
+- [x] Milestone 10: optional subtitles (local Whisper, off by default)
 
 Added after Phase 1: authentication and multi-tenant RBAC — accounts, custom roles,
 account switching, account requests with system-admin approval, and access-controlled
